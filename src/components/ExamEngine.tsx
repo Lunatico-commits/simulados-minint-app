@@ -5,6 +5,7 @@ import { getExamQuestions, LEVEL_INFO } from "../data/questions";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import AdSensePlaceholder from "./AdSensePlaceholder";
+import NativeAd from "./NativeAd";
 import { playCorrectSound, playIncorrectSound, playVictorySound, playClickSound, isSoundEnabled, setSoundEnabled } from "../utils/soundEffects";
 
 interface ExamEngineProps {
@@ -730,6 +731,9 @@ export default function ExamEngine({
 
             {/* ADSENSE AD PLACEHOLDER IN RESULTS */}
             <AdSensePlaceholder slot="card" />
+
+            {/* NATIVE ADSTERRA AD IN RESULTS */}
+            <NativeAd />
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">

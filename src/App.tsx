@@ -7,6 +7,7 @@ import MultiplayerLobby from "./components/MultiplayerLobby";
 import Leaderboard from "./components/Leaderboard";
 import Footer from "./components/Footer";
 import AvatarSelectionModal from "./components/AvatarSelectionModal";
+import ScrollToTop from "./components/ScrollToTop";
 import { UserState, UserStats, Level } from "./types";
 import { useTheme } from "./hooks/useTheme";
 import { DEFAULT_AVATAR_ID } from "./data/avatars";
@@ -373,6 +374,9 @@ export default function App() {
 
       {/* Application Footer */}
       <Footer />
+
+      {/* Floating Scroll To Top Button */}
+      <ScrollToTop />
     </div>
   );
 }

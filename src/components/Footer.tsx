@@ -3,6 +3,7 @@ import { Heart, Shield } from "lucide-react";
 import WhatsAppIcon from "./WhatsAppIcon";
 import SupportModal from "./SupportModal";
 import LegalModal, { LegalModalType } from "./LegalModal";
+import NativeAd from "./NativeAd";
 
 export default function Footer() {
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
@@ -12,7 +13,11 @@ export default function Footer() {
 
   return (
     <footer className="mt-auto border-t border-slate-800 bg-sleek-card/95 backdrop-blur-md text-slate-400 py-6 px-4 font-sans transition-colors duration-200">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+        {/* Native Adsterra Ad in Footer */}
+        <NativeAd />
+
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
         
         {/* Brand, Rights & Legal Links */}
         <div className="space-y-1.5">
@@ -64,8 +69,8 @@ export default function Footer() {
             <span>Apoie este Projeto 💙</span>
           </button>
         </div>
-
       </div>
+    </div>
 
       {/* Support Modal */}
       <SupportModal
