@@ -5,6 +5,7 @@ import { getExamQuestions, LEVEL_INFO } from "../data/questions";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import { playCorrectSound, playIncorrectSound, playVictorySound, playClickSound, isSoundEnabled, setSoundEnabled } from "../utils/soundEffects";
+import AnimatedCounter from "./AnimatedCounter";
 
 interface ExamEngineProps {
   username: string;
@@ -714,7 +715,9 @@ export default function ExamEngine({
                 />
               </svg>
               <div className="absolute text-center space-y-0.5">
-                <span className="text-4xl font-extrabold font-mono tracking-tighter text-slate-100">{score}</span>
+                <span className="text-4xl font-extrabold font-mono tracking-tighter text-slate-100">
+                  <AnimatedCounter value={score} duration={1000} />
+                </span>
                 <span className="text-slate-500 text-sm block">/ {questions.length}</span>
               </div>
             </div>
@@ -752,11 +755,15 @@ export default function ExamEngine({
             <div className="bg-sleek-card-sec border border-slate-800 rounded-2xl p-4 grid grid-cols-2 gap-4 divide-x divide-slate-850">
               <div className="space-y-1 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-bold">Aproveitamento</span>
-                <span className="text-lg font-bold text-slate-200 font-mono">{Math.round((score / questions.length) * 100)}%</span>
+                <span className="text-lg font-bold text-slate-200 font-mono">
+                  <AnimatedCounter value={Math.round((score / questions.length) * 100)} suffix="%" duration={1200} />
+                </span>
               </div>
               <div className="space-y-1 text-center">
                 <span className="text-[10px] text-slate-500 uppercase font-bold">Pontos Recebidos</span>
-                <span className="text-lg font-bold text-sleek-accent font-mono">+{score * 50} PTS</span>
+                <span className="text-lg font-bold text-sleek-accent font-mono">
+                  +<AnimatedCounter value={score * 50} suffix=" PTS" duration={1400} />
+                </span>
               </div>
             </div>
 

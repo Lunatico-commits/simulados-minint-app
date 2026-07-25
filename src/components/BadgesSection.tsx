@@ -3,6 +3,7 @@ import { Award, Shield, Star, Flame, Target, Book, Crown, Zap, Trophy, Lock, Che
 import { motion } from "motion/react";
 import { UserStats } from "../types";
 import { BADGES, getBadgeProgress, getUserBadgesSummary, Badge } from "../data/badges";
+import AnimatedCounter from "./AnimatedCounter";
 
 interface BadgesSectionProps {
   stats: UserStats;
@@ -118,7 +119,9 @@ export default function BadgesSection({ stats }: BadgesSectionProps) {
           <div className="bg-sleek-card-sec border border-slate-800 rounded-2xl p-3.5 min-w-[220px] space-y-2 shrink-0">
             <div className="flex items-center justify-between text-xs font-mono">
               <span className="text-slate-400 font-semibold uppercase tracking-wider">Desempenho</span>
-              <span className="text-amber-400 font-bold">{summary.unlockedCount} / {summary.totalCount} ({summary.completionPercentage}%)</span>
+              <span className="text-amber-400 font-bold">
+                <AnimatedCounter value={summary.unlockedCount} /> / {summary.totalCount} (<AnimatedCounter value={summary.completionPercentage} suffix="%" />)
+              </span>
             </div>
             <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
               <div
@@ -149,7 +152,7 @@ export default function BadgesSection({ stats }: BadgesSectionProps) {
                 : "bg-sleek-card-sec text-slate-400 hover:text-slate-200 border border-slate-800"
             }`}
           >
-            Desbloqueadas ({summary.unlockedCount})
+            Desbloqueadas (<AnimatedCounter value={summary.unlockedCount} />)
           </button>
           <button
             onClick={() => setFilter("locked")}

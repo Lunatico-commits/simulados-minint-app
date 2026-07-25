@@ -414,14 +414,13 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     }
   };
 
-  // Copy Direct Room Link Helper
+  // Copy Direct Room Code Helper
   const [copied, setCopied] = useState(false);
   const handleCopyCode = () => {
     if (!room) return;
-    const directUrl = `https://simulados-minint.vercel.app/?sala=${room.code}`;
-    navigator.clipboard.writeText(directUrl);
+    navigator.clipboard.writeText(room.code);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setTimeout(() => setCopied(false), 2500);
   };
 
   // ----------------------------------------------------
@@ -606,18 +605,32 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 bg-sleek-card-sec border border-slate-800/60 px-3.5 py-2 rounded-2xl w-full sm:w-auto justify-between">
+                <div className="flex flex-wrap items-center gap-2 bg-sleek-card-sec border border-slate-800/60 px-3.5 py-2 rounded-2xl w-full sm:w-auto justify-between relative">
                   <div>
                     <span className="text-[9px] text-slate-500 block uppercase font-bold">Código de Acesso</span>
-                    <span className="text-md font-mono font-extrabold text-sleek-accent tracking-wider">{room.code}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-md font-mono font-extrabold text-sleek-accent tracking-wider">{room.code}</span>
+                      {copied && (
+                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/90 border border-emerald-500/40 px-2 py-0.5 rounded-md animate-fade-in shadow-md">
+                          Código {room.code} copiado!
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <button
                       onClick={handleCopyCode}
-                      title="Copiar Link Direto da Sala"
-                      className="p-2 hover:bg-sleek-card-hover rounded-xl text-slate-400 hover:text-sleek-accent border border-transparent hover:border-slate-800 cursor-pointer transition-all"
+                      title={`Copiar Código ${room.code}`}
+                      className="p-2 hover:bg-sleek-card-hover rounded-xl text-slate-400 hover:text-sleek-accent border border-transparent hover:border-slate-800 cursor-pointer transition-all flex items-center gap-1"
                     >
-                      {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copied ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-400" />
+                          <span className="text-[10px] text-emerald-400 font-bold hidden sm:inline">Copiado!</span>
+                        </>
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
                     </button>
                     <a
                       href={`https://api.whatsapp.com/send?text=${encodeURIComponent(

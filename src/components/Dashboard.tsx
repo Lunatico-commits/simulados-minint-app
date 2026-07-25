@@ -14,6 +14,7 @@ import InviteButton from "./InviteButton";
 import FaqSection from "./FaqSection";
 import TestimonialsSection from "./TestimonialsSection";
 import { DEFAULT_AVATAR_ID } from "../data/avatars";
+import AnimatedCounter from "./AnimatedCounter";
 
 interface DashboardProps {
   username: string;
@@ -60,7 +61,7 @@ export default function Dashboard({
 
   const renderStatCard = (
     title: string, 
-    value: string | number, 
+    value: ReactNode, 
     sub: string, 
     icon: ReactNode, 
     borderTheme: string,
@@ -208,7 +209,7 @@ export default function Dashboard({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-5">
         {renderStatCard(
           "Pontos de Preparação",
-          `${stats.points} PTS`,
+          <AnimatedCounter value={stats.points} suffix=" PTS" />,
           "Acumulado em simulados",
           <Award className="w-5 h-5 text-amber-400" />,
           "hover:border-amber-500/20",
@@ -217,7 +218,7 @@ export default function Dashboard({
         )}
         {renderStatCard(
           "Taxa de Acertos",
-          `${accuracy}%`,
+          <AnimatedCounter value={accuracy} suffix="%" />,
           `${stats.correctAnswers} certas de ${stats.totalAnswers} respondidas`,
           <TrendingUp className="w-5 h-5 text-blue-400" />,
           "hover:border-blue-500/20",
@@ -226,7 +227,7 @@ export default function Dashboard({
         )}
         {renderStatCard(
           "Simulados Concluídos",
-          stats.totalExams,
+          <AnimatedCounter value={stats.totalExams} />,
           "Tentativas registradas",
           <CheckCircle2 className="w-5 h-5 text-emerald-400" />,
           "hover:border-emerald-500/20",
@@ -235,7 +236,10 @@ export default function Dashboard({
         )}
         {renderStatCard(
           "Medalhas & Conquistas",
-          `${badgeSummary.unlockedCount} de ${badgeSummary.totalCount}`,
+          <span className="inline-flex items-center gap-1.5">
+            <AnimatedCounter value={badgeSummary.unlockedCount} />
+            <span className="text-slate-400 text-sm font-normal">/ {badgeSummary.totalCount}</span>
+          </span>,
           `${badgeSummary.completionPercentage}% do quadro completo`,
           <Medal className="w-5 h-5 text-amber-400" />,
           "hover:border-amber-500/40",
