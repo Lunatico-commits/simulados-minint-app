@@ -95,26 +95,12 @@ export function removeAccountFromDevice(username: string): SavedAccount[] {
     const filtered = accounts.filter(
       (a) => a.username.toLowerCase() !== username.toLowerCase()
     );
-    // Write back updated list to STORAGE_KEY
+    // Write back updated list to STORAGE_KEY (only removes shortcut from this device)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
-
-    // Remove from minint_users object in localStorage
-    const storedUsersRaw = localStorage.getItem("minint_users");
-    if (storedUsersRaw) {
-      const storedUsers = JSON.parse(storedUsersRaw);
-      delete storedUsers[username.toLowerCase()];
-      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
-    }
-
-    // Clean up user-specific storage keys
-    localStorage.removeItem(`minint_avatar_${username}`);
-    localStorage.removeItem(`minint_level_${username}`);
-    localStorage.removeItem(`minint_stats_${username}`);
-    localStorage.removeItem(`minint_last_rank_${username.toLowerCase()}`);
 
     return filtered;
   } catch (err) {
-    console.error("Erro ao remover conta do dispositivo:", err);
+    console.error("Erro ao remover atalho de conta do dispositivo:", err);
     return [];
   }
 }
