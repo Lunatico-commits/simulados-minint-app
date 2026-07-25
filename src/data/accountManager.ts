@@ -15,8 +15,8 @@ export function getSavedAccounts(): SavedAccount[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     let accounts: SavedAccount[] = raw ? JSON.parse(raw) : [];
 
-    // Fallback: If no saved accounts array exists yet, inspect existing localStorage user stats
-    if (accounts.length === 0) {
+    // Fallback: ONLY inspect existing localStorage user stats if STORAGE_KEY has NEVER been set (raw === null)
+    if (raw === null && accounts.length === 0) {
       const storedUsersRaw = localStorage.getItem("minint_users");
       if (storedUsersRaw) {
         const storedUsers = JSON.parse(storedUsersRaw);
@@ -39,6 +39,8 @@ export function getSavedAccounts(): SavedAccount[] {
           }
         });
       }
+      // Initialize STORAGE_KEY so future checks respect deletions
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(accounts));
     }
 
     // Sort by last active descending
@@ -86,12 +88,30 @@ export function saveAccountToDevice(username: string) {
 }
 
 export function removeAccountFromDevice(username: string): SavedAccount[] {
+  if (!username) return getSavedAccounts();
+
   try {
     const accounts = getSavedAccounts();
     const filtered = accounts.filter(
       (a) => a.username.toLowerCase() !== username.toLowerCase()
     );
+    // Write back updated list to STORAGE_KEY
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+
+    // Remove from minint_users object in localStorage
+    const storedUsersRaw = localStorage.getItem("minint_users");
+    if (storedUsersRaw) {
+      const storedUsers = JSON.parse(storedUsersRaw);
+      delete storedUsers[username.toLowerCase()];
+      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+    }
+
+    // Clean up user-specific storage keys
+    localStorage.removeItem(`minint_avatar_${username}`);
+    localStorage.removeItem(`minint_level_${username}`);
+    localStorage.removeItem(`minint_stats_${username}`);
+    localStorage.removeItem(`minint_last_rank_${username.toLowerCase()}`);
+
     return filtered;
   } catch (err) {
     console.error("Erro ao remover conta do dispositivo:", err);

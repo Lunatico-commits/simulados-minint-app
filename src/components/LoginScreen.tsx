@@ -50,10 +50,14 @@ export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, 
 
   const handleRemoveAccount = (usernameToRemove: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     const updated = removeAccountFromDevice(usernameToRemove);
     setSavedAccounts(updated);
     if (updated.length === 0) {
       setShowAccountSelector(false);
+      setIsLogin(true);
+      setError("");
+      setSuccess("");
     }
   };
 
