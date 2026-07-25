@@ -4,17 +4,20 @@ import { Room, Player, ChatMessage, Question, Level } from "../types";
 import { LEVEL_INFO } from "../data/questions";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
+import WhatsAppIcon from "./WhatsAppIcon";
 
 interface MultiplayerLobbyProps {
   username: string;
+  initialRoomCode?: string;
   onNavigateBack: () => void;
 }
 
-export default function MultiplayerLobby({ username, onNavigateBack }: MultiplayerLobbyProps) {
-  const [roomCodeInput, setRoomCodeInput] = useState("");
+export default function MultiplayerLobby({ username, initialRoomCode, onNavigateBack }: MultiplayerLobbyProps) {
+  const [roomCodeInput, setRoomCodeInput] = useState(initialRoomCode || "");
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const autoJoinedRef = useRef(false);
   
   // Game states
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
@@ -116,14 +119,13 @@ export default function MultiplayerLobby({ username, onNavigateBack }: Multiplay
     }
   };
 
-  // Join Existing Room
-  const handleJoinRoom = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!roomCodeInput.trim()) return;
+  // Join Existing Room with specific code
+  const joinRoomWithCode = async (codeToJoin: string) => {
+    if (!codeToJoin.trim()) return;
 
     setLoading(true);
     setError("");
-    const cleanCode = roomCodeInput.toUpperCase().trim();
+    const cleanCode = codeToJoin.toUpperCase().trim();
 
     try {
       const res = await fetch("/api/multiplayer/join", {
@@ -143,6 +145,22 @@ export default function MultiplayerLobby({ username, onNavigateBack }: Multiplay
     } finally {
       setLoading(false);
     }
+  };
+
+  // Auto-join room if initialRoomCode was passed from URL
+  useEffect(() => {
+    if (initialRoomCode && !autoJoinedRef.current) {
+      autoJoinedRef.current = true;
+      const clean = initialRoomCode.toUpperCase().trim();
+      setRoomCodeInput(clean);
+      joinRoomWithCode(clean);
+    }
+  }, [initialRoomCode]);
+
+  // Form submit handler for Join Room button
+  const handleJoinRoom = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    joinRoomWithCode(roomCodeInput);
   };
 
   // Leave room manually
@@ -250,11 +268,12 @@ export default function MultiplayerLobby({ username, onNavigateBack }: Multiplay
     }
   };
 
-  // Copy Room Code Helper
+  // Copy Direct Room Link Helper
   const [copied, setCopied] = useState(false);
   const handleCopyCode = () => {
     if (!room) return;
-    navigator.clipboard.writeText(room.code);
+    const directUrl = `https://simulados-minint.vercel.app/?sala=${room.code}`;
+    navigator.clipboard.writeText(directUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -371,6 +390,43 @@ export default function MultiplayerLobby({ username, onNavigateBack }: Multiplay
             </form>
           </motion.div>
         </div>
+
+        {/* Card: WhatsApp Community Banner */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mt-8 max-w-3xl mx-auto bg-gradient-to-r from-emerald-950/80 via-slate-900 to-emerald-950/80 border border-emerald-500/30 rounded-3xl p-5 md:p-6 shadow-xl shadow-emerald-950/30 flex flex-col sm:flex-row items-center justify-between gap-5 relative overflow-hidden group"
+        >
+          <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none" />
+          
+          <div className="flex items-start gap-4">
+            <div className="p-3.5 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl shrink-0 text-emerald-400 shadow-inner">
+              <WhatsAppIcon className="w-7 h-7" />
+            </div>
+            <div className="space-y-1 text-center sm:text-left">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
+                <Users className="w-3 h-3" /> Comunidade Oficial MININT
+              </div>
+              <h3 className="text-base font-bold text-slate-100 font-display">
+                Comunidade do WhatsApp
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed max-w-lg">
+                Procuras um oponente para o duelo? Entra no nosso grupo do WhatsApp para encontrar candidatos online!
+              </p>
+            </div>
+          </div>
+
+          <a
+            href="https://chat.whatsapp.com/L1nLLLK8M4xGlSGUfzK6ID?s=cl&p=a&ilr=4"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider py-3.5 px-5 rounded-2xl flex items-center justify-center gap-2.5 shadow-lg shadow-emerald-600/20 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          >
+            <WhatsAppIcon className="w-4 h-4 fill-current" />
+            <span>Entrar no Grupo</span>
+          </a>
+        </motion.div>
       </div>
     );
   }
@@ -404,17 +460,32 @@ export default function MultiplayerLobby({ username, onNavigateBack }: Multiplay
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 bg-sleek-card-sec border border-slate-800/60 px-3.5 py-2 rounded-2xl w-full sm:w-auto justify-between">
+                <div className="flex flex-wrap items-center gap-2 bg-sleek-card-sec border border-slate-800/60 px-3.5 py-2 rounded-2xl w-full sm:w-auto justify-between">
                   <div>
                     <span className="text-[9px] text-slate-500 block uppercase font-bold">Código de Acesso</span>
                     <span className="text-md font-mono font-extrabold text-sleek-accent tracking-wider">{room.code}</span>
                   </div>
-                  <button
-                    onClick={handleCopyCode}
-                    className="p-2 hover:bg-sleek-card-hover rounded-xl text-slate-400 hover:text-sleek-accent border border-transparent hover:border-slate-800 cursor-pointer transition-all"
-                  >
-                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleCopyCode}
+                      title="Copiar Link Direto da Sala"
+                      className="p-2 hover:bg-sleek-card-hover rounded-xl text-slate-400 hover:text-sleek-accent border border-transparent hover:border-slate-800 cursor-pointer transition-all"
+                    >
+                      {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <a
+                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                        `Boas! Criei a sala privada no MININT. Clica no link para entrares diretamente: https://simulados-minint.vercel.app/?sala=${room.code}`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Convidar no Grupo do WhatsApp"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                    >
+                      <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                      <span className="hidden sm:inline">Convidar</span>
+                    </a>
+                  </div>
                 </div>
               </div>
 
@@ -455,6 +526,30 @@ export default function MultiplayerLobby({ username, onNavigateBack }: Multiplay
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* WhatsApp Share Banner */}
+              <div className="mt-4 p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl shrink-0">
+                    <WhatsAppIcon className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-emerald-300 block">Procuras concorrentes para esta sala?</span>
+                    <span className="text-slate-400 text-[11px]">Partilha o código no grupo do WhatsApp da comunidade.</span>
+                  </div>
+                </div>
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                    `Boas! Criei a sala privada no MININT. Clica no link para entrares diretamente: https://simulados-minint.vercel.app/?sala=${room.code}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full sm:w-auto shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-900/20 hover:scale-105 active:scale-95"
+                >
+                  <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
+                  <span>Convidar no Grupo do WhatsApp</span>
+                </a>
               </div>
             </div>
 

@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
-import { HelpCircle, Send, Sparkles, Check, X, ChevronRight, Loader2, ShieldCheck, HelpCircle as HelpIcon, ArrowRight, BookOpen, GraduationCap, Award, Clock, AlertTriangle, Maximize2, Minimize2, Target, Volume2, VolumeX } from "lucide-react";
+import { HelpCircle, Send, Sparkles, Check, X, ChevronRight, Loader2, ShieldCheck, HelpCircle as HelpIcon, ArrowRight, BookOpen, GraduationCap, Award, Clock, AlertTriangle, Maximize2, Minimize2, Target, Volume2, VolumeX, LogOut } from "lucide-react";
 import { Question, ExamAttempt, Level } from "../types";
 import { getExamQuestions, LEVEL_INFO } from "../data/questions";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
-import AdSensePlaceholder from "./AdSensePlaceholder";
-import NativeAd from "./NativeAd";
 import { playCorrectSound, playIncorrectSound, playVictorySound, playClickSound, isSoundEnabled, setSoundEnabled } from "../utils/soundEffects";
 
 interface ExamEngineProps {
@@ -134,6 +132,20 @@ export default function ExamEngine({
       onFinishExam(score, questions.length, examName, level);
     }
   }, [timeLeft, examFinished, questions.length, timeUp, score, category, level, onFinishExam]);
+
+  // Warn user when trying to reload or close tab mid-exam
+  useEffect(() => {
+    if (examFinished || questions.length === 0) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "Tens a certeza que queres sair? O teu progresso no simulado será perdido.";
+      return e.returnValue;
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [examFinished, questions.length]);
 
   // Scroll tutor chat to bottom
   useEffect(() => {
@@ -406,6 +418,16 @@ export default function ExamEngine({
                           <span>Modo Foco</span>
                         </>
                       )}
+                    </button>
+
+                    {/* BOTÃO SAIR DO SIMULADO */}
+                    <button
+                      onClick={onNavigateBack}
+                      title="Sair e Cancelar Simulado"
+                      className="px-2.5 py-1.5 rounded-xl border border-red-500/30 bg-red-950/20 hover:bg-red-900/40 text-red-300 hover:text-red-200 text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-all cursor-pointer shrink-0"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-red-400" />
+                      <span className="hidden xs:inline">Sair</span>
                     </button>
 
                     {/* VISUAL COUNTDOWN TIMER */}
@@ -728,12 +750,6 @@ export default function ExamEngine({
                 <span className="text-lg font-bold text-sleek-accent font-mono">+{score * 50} PTS</span>
               </div>
             </div>
-
-            {/* ADSENSE AD PLACEHOLDER IN RESULTS */}
-            <AdSensePlaceholder slot="card" />
-
-            {/* NATIVE ADSTERRA AD IN RESULTS */}
-            <NativeAd />
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">

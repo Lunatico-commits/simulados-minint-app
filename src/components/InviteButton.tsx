@@ -22,9 +22,7 @@ export default function InviteButton({
     if (onInvite) onInvite();
 
     const cleanUsername = username || "Candidato";
-    const origin = window.location.origin;
-    const pathname = window.location.pathname;
-    const inviteUrl = `${origin}${pathname}?ref=${encodeURIComponent(cleanUsername)}`;
+    const inviteUrl = `https://simulados-minint.vercel.app/?ref=${encodeURIComponent(cleanUsername)}`;
     
     const shareText = `Vem treinar para o Concurso do MININT comigo no Simulados MININT! Prepara-te para a PNA, SPN, SME e SIC:`;
 

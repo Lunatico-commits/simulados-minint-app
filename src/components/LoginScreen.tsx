@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Key, User, ArrowRight, UserPlus, LogIn, AlertCircle, Sun, Moon, Monitor, Heart, Users, Trash2, ChevronRight, UserCheck, Plus, Sparkles } from "lucide-react";
+import { Shield, Key, User, ArrowRight, UserPlus, LogIn, AlertCircle, Sun, Moon, Monitor, Heart, Users, Trash2, ChevronRight, UserCheck, Plus, Sparkles, Gift, Check } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ThemeMode } from "../hooks/useTheme";
 import WhatsAppIcon from "./WhatsAppIcon";
@@ -12,15 +12,18 @@ const WHATSAPP_VIP_LINK = "https://chat.whatsapp.com/L1nLLLK8M4xGlSGUfzK6ID?s=cl
 
 interface LoginScreenProps {
   onLogin: (username: string) => void;
+  initialSalaCode?: string | null;
+  initialRefCode?: string | null;
   themeMode?: ThemeMode;
   resolvedTheme?: "dark" | "light";
   onThemeChange?: (mode: ThemeMode) => void;
 }
 
-export default function LoginScreen({ onLogin, themeMode, resolvedTheme, onThemeChange }: LoginScreenProps) {
-  const [isLogin, setIsLogin] = useState(true);
+export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, themeMode, resolvedTheme, onThemeChange }: LoginScreenProps) {
+  const [isLogin, setIsLogin] = useState(!initialRefCode);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [referralCode, setReferralCode] = useState(initialRefCode || "");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
@@ -28,13 +31,21 @@ export default function LoginScreen({ onLogin, themeMode, resolvedTheme, onTheme
 
   // Multi-Account Saved Profiles state
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
-  const [showAccountSelector, setShowAccountSelector] = useState(true);
+  const [showAccountSelector, setShowAccountSelector] = useState(false);
 
   useEffect(() => {
     const loaded = getSavedAccounts();
     setSavedAccounts(loaded);
-    setShowAccountSelector(loaded.length > 0);
-  }, []);
+    setShowAccountSelector(loaded.length > 0 && !initialRefCode);
+  }, [initialRefCode]);
+
+  useEffect(() => {
+    if (initialRefCode) {
+      setIsLogin(false); // Force Registration mode
+      setShowAccountSelector(false); // Hide Netflix-style account selector
+      setReferralCode(initialRefCode);
+    }
+  }, [initialRefCode]);
 
   const handleRemoveAccount = (usernameToRemove: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -101,9 +112,38 @@ export default function LoginScreen({ onLogin, themeMode, resolvedTheme, onTheme
       };
 
       localStorage.setItem("minint_users", JSON.stringify(storedUsers));
-      setSuccess("Conta criada com sucesso! Faça login para aceder.");
-      setIsLogin(true);
-      setPassword("");
+
+      // Process Referral Code if provided
+      const cleanRef = referralCode.trim();
+      if (cleanRef) {
+        const claimKey = `minint_ref_claimed_${cleanRef.toLowerCase()}_by_${normalizedUser}`;
+        const alreadyClaimed = localStorage.getItem(claimKey);
+
+        if (!alreadyClaimed) {
+          fetch("/api/invite/reward", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ referrer: cleanRef })
+          })
+            .then((res) => res.json())
+            .then(() => {
+              localStorage.setItem(claimKey, "true");
+              // If referrer exists in local storage on this device, add 5 points to their stats
+              const refStatsRaw = localStorage.getItem(`minint_stats_${cleanRef}`);
+              if (refStatsRaw) {
+                const parsed = JSON.parse(refStatsRaw);
+                parsed.points = (parsed.points || 0) + 5;
+                localStorage.setItem(`minint_stats_${cleanRef}`, JSON.stringify(parsed));
+              }
+            })
+            .catch((err) => console.error("Erro ao atribuir pontos de referência:", err));
+        }
+      }
+
+      setSuccess("Conta criada com sucesso! A entrar no sistema...");
+      setTimeout(() => {
+        onLogin(username.trim());
+      }, 400);
     }
   };
 
@@ -195,6 +235,48 @@ export default function LoginScreen({ onLogin, themeMode, resolvedTheme, onTheme
             Plataforma Oficial de Simulados para Concursos
           </p>
         </div>
+
+        {/* Room invite banner if accessed via link */}
+        {initialSalaCode && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -5 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="mb-5 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-medium flex items-center gap-3 shadow-xl backdrop-blur-md"
+          >
+            <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl font-mono font-bold text-sm shrink-0 border border-amber-500/30">
+              #{initialSalaCode}
+            </div>
+            <div>
+              <span className="font-bold text-amber-200 block text-xs uppercase tracking-wider">
+                Convite para Sala Privada
+              </span>
+              <span className="text-[11px] text-slate-300">
+                Entra com a tua conta para seres direcionado diretamente para a sala de competição!
+              </span>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Referral invite banner if accessed via ref link */}
+        {initialRefCode && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: -5 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="mb-5 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-medium flex items-center gap-3 shadow-xl backdrop-blur-md"
+          >
+            <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl font-mono font-bold text-sm shrink-0 border border-amber-500/30">
+              <Gift className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <span className="font-bold text-amber-200 block text-xs uppercase tracking-wider flex items-center gap-1.5">
+                Convite de <span className="text-amber-400 font-extrabold">{initialRefCode}</span>
+              </span>
+              <span className="text-[11px] text-slate-300">
+                Regista a tua conta para estudares para o MININT e atribuíres +5 PONTOS ao teu colega!
+              </span>
+            </div>
+          </motion.div>
+        )}
 
         {/* Card Container: Either Profile Selector or Login Form */}
         <motion.div
@@ -373,6 +455,35 @@ export default function LoginScreen({ onLogin, themeMode, resolvedTheme, onTheme
                     required
                   />
                 </div>
+
+                {/* Código de Referência / Convidado Por (Apenas no Registo) */}
+                {!isLogin && (
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Código de Referência
+                      </span>
+                      {referralCode && (
+                        <span className="text-[10px] text-amber-400 font-mono font-bold">
+                          +5 PTS para recomendador
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="text"
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value)}
+                      placeholder="Ex: GangSt"
+                      className="w-full bg-sleek-card-sec border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-amber-300 font-mono font-semibold placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-colors"
+                    />
+                    {referralCode && (
+                      <p className="text-[11px] text-amber-300/90 flex items-center gap-1.5 pt-0.5 font-medium">
+                        <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Convidado por <strong className="text-amber-300 font-bold">{referralCode}</strong>. Ao criares conta, o utilizador receberá +5 pontos de bónus!</span>
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <button
                   type="submit"

@@ -1,9 +1,10 @@
-import { Shield, LogOut, ArrowLeft, Menu, X, User, Sun, Moon, Monitor, Sparkles, Volume2, VolumeX } from "lucide-react";
+import { Shield, LogOut, ArrowLeft, Menu, X, User, Sun, Moon, Monitor, Sparkles, Volume2, VolumeX, TrendingUp, TrendingDown, Trophy } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ThemeMode } from "../hooks/useTheme";
 import WhatsAppIcon from "./WhatsAppIcon";
 import AvatarDisplay from "./AvatarDisplay";
+import RankNotificationToast, { RankChangeNotice } from "./RankNotificationToast";
 import { DEFAULT_AVATAR_ID } from "../data/avatars";
 import { isSoundEnabled, setSoundEnabled } from "../utils/soundEffects";
 
@@ -13,6 +14,9 @@ interface NavbarProps {
   username: string;
   avatarId?: string;
   currentView: string;
+  userRank?: number | null;
+  rankNotice?: RankChangeNotice | null;
+  onDismissRankNotice?: () => void;
   themeMode: ThemeMode;
   resolvedTheme: "dark" | "light";
   onThemeChange: (mode: ThemeMode) => void;
@@ -26,6 +30,9 @@ export default function Navbar({
   username,
   avatarId = DEFAULT_AVATAR_ID,
   currentView,
+  userRank,
+  rankNotice,
+  onDismissRankNotice,
   themeMode,
   resolvedTheme,
   onThemeChange,
@@ -101,19 +108,41 @@ export default function Navbar({
 
         {/* Desktop middle links */}
         <div className="hidden lg:flex items-center gap-1.5">
-          {navItems.map((item) => (
-            <button
-              key={item.view}
-              onClick={() => onNavigateToView(item.view)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold uppercase tracking-widest cursor-pointer transition-all duration-200 ${
-                currentView === item.view
-                  ? "bg-blue-950/20 dark:bg-blue-950/40 text-amber-500 dark:text-sleek-accent border border-amber-500/30 dark:border-blue-900/40"
-                  : "text-slate-400 hover:text-slate-100 hover:bg-sleek-card-hover"
-              }`}
-            >
-              {item.name}
-            </button>
-          ))}
+          {navItems.map((item) => {
+            const isLeaderboard = item.view === "leaderboard";
+            return (
+              <button
+                key={item.view}
+                onClick={() => onNavigateToView(item.view)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold uppercase tracking-widest cursor-pointer transition-all duration-200 flex items-center gap-1.5 ${
+                  currentView === item.view
+                    ? "bg-blue-950/20 dark:bg-blue-950/40 text-amber-500 dark:text-sleek-accent border border-amber-500/30 dark:border-blue-900/40"
+                    : "text-slate-400 hover:text-slate-100 hover:bg-sleek-card-hover"
+                }`}
+              >
+                <span>{item.name}</span>
+                {isLeaderboard && typeof userRank === "number" && userRank > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono font-bold shrink-0">
+                    #{userRank}
+                  </span>
+                )}
+                {isLeaderboard && rankNotice && (
+                  <motion.span
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: [1, 1.15, 1] }}
+                    transition={{ repeat: Infinity, duration: 1.5 }}
+                    className={`text-[9px] px-1.5 py-0.2 rounded-full font-extrabold flex items-center gap-0.5 shrink-0 ${
+                      rankNotice.direction === "up"
+                        ? "bg-emerald-500 text-slate-950 font-bold"
+                        : "bg-amber-500 text-slate-950 font-bold"
+                    }`}
+                  >
+                    {rankNotice.direction === "up" ? `▲ +${rankNotice.delta}` : `▼ -${rankNotice.delta}`}
+                  </motion.span>
+                )}
+              </button>
+            );
+          })}
 
           {/* WhatsApp VIP Community Link (Desktop) */}
           <a
@@ -232,22 +261,45 @@ export default function Navbar({
             transition={{ duration: 0.2 }}
             className="lg:hidden mt-3 border-t border-slate-800 pt-3 space-y-1.5 overflow-hidden"
           >
-            {navItems.map((item) => (
-              <button
-                key={item.view}
-                onClick={() => {
-                  onNavigateToView(item.view);
-                  setIsOpen(false);
-                }}
-                className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-widest cursor-pointer transition-all duration-200 block ${
-                  currentView === item.view
-                    ? "bg-blue-950/40 text-sleek-accent border border-blue-900/40 pl-6"
-                    : "text-slate-400 hover:text-slate-100 hover:bg-sleek-card-hover"
-                }`}
-              >
-                {item.name}
-              </button>
-            ))}
+            {navItems.map((item) => {
+              const isLeaderboard = item.view === "leaderboard";
+              return (
+                <button
+                  key={item.view}
+                  onClick={() => {
+                    onNavigateToView(item.view);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-widest cursor-pointer transition-all duration-200 flex items-center justify-between ${
+                    currentView === item.view
+                      ? "bg-blue-950/40 text-sleek-accent border border-blue-900/40"
+                      : "text-slate-400 hover:text-slate-100 hover:bg-sleek-card-hover"
+                  }`}
+                >
+                  <span>{item.name}</span>
+                  {isLeaderboard && (
+                    <div className="flex items-center gap-1.5">
+                      {typeof userRank === "number" && userRank > 0 && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-400 border border-amber-500/30 font-mono font-bold">
+                          #{userRank}
+                        </span>
+                      )}
+                      {rankNotice && (
+                        <span
+                          className={`text-[9px] px-2 py-0.5 rounded-full font-extrabold ${
+                            rankNotice.direction === "up"
+                              ? "bg-emerald-500 text-slate-950 font-bold"
+                              : "bg-amber-500 text-slate-950 font-bold"
+                          }`}
+                        >
+                          {rankNotice.direction === "up" ? `▲ +${rankNotice.delta}` : `▼ -${rankNotice.delta}`}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
 
             {/* Mobile WhatsApp VIP Button */}
             <a
@@ -282,6 +334,15 @@ export default function Navbar({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Floating Rank Notification Toast */}
+      <RankNotificationToast
+        notice={rankNotice || null}
+        onDismiss={() => {
+          if (onDismissRankNotice) onDismissRankNotice();
+        }}
+        onViewRanking={() => onNavigateToView("leaderboard")}
+      />
     </nav>
   );
 }

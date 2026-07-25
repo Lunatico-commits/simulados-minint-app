@@ -7,7 +7,9 @@ import MultiplayerLobby from "./components/MultiplayerLobby";
 import Leaderboard from "./components/Leaderboard";
 import Footer from "./components/Footer";
 import AvatarSelectionModal from "./components/AvatarSelectionModal";
+import ExitExamConfirmModal from "./components/ExitExamConfirmModal";
 import ScrollToTop from "./components/ScrollToTop";
+import { RankChangeNotice } from "./components/RankNotificationToast";
 import { UserState, UserStats, Level } from "./types";
 import { useTheme } from "./hooks/useTheme";
 import { DEFAULT_AVATAR_ID } from "./data/avatars";
@@ -37,42 +39,93 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<Level>("basico");
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [initialSalaCode, setInitialSalaCode] = useState<string | null>(null);
+  const [initialRefCode, setInitialRefCode] = useState<string | null>(null);
+
+  // Active exam exit confirmation states
+  const [isExamActive, setIsExamActive] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [pendingView, setPendingView] = useState<string | null>(null);
+
+  // User position in server ranking
+  const [userRank, setUserRank] = useState<number | null>(null);
+  const [rankNotice, setRankNotice] = useState<RankChangeNotice | null>(null);
+
+  const checkUserRank = async (username: string) => {
+    if (!username) return;
+    try {
+      const res = await fetch("/api/ranking/list");
+      if (!res.ok) return;
+      const rankings = await res.json();
+      if (!Array.isArray(rankings)) return;
+
+      const userIdx = rankings.findIndex(
+        (r: { username: string }) => r.username.toLowerCase() === username.toLowerCase()
+      );
+
+      if (userIdx !== -1) {
+        const newRank = userIdx + 1;
+        const storageKey = `minint_last_rank_${username.toLowerCase()}`;
+        const storedRankRaw = localStorage.getItem(storageKey);
+
+        if (storedRankRaw !== null) {
+          const oldRank = parseInt(storedRankRaw, 10);
+          if (!isNaN(oldRank) && oldRank !== newRank) {
+            const delta = oldRank - newRank; // positive if newRank < oldRank (subiu)
+            const direction: "up" | "down" = delta > 0 ? "up" : "down";
+            setRankNotice({
+              direction,
+              delta: Math.abs(delta),
+              oldRank,
+              newRank
+            });
+          }
+        }
+
+        localStorage.setItem(storageKey, newRank.toString());
+        setUserRank(newRank);
+      }
+    } catch {
+      // Quiet catch
+    }
+  };
+
+  // Periodic ranking check for active session
+  useEffect(() => {
+    if (!user.isLoggedIn || !user.username) return;
+
+    checkUserRank(user.username);
+
+    const interval = setInterval(() => {
+      checkUserRank(user.username);
+    }, 25000);
+
+    return () => clearInterval(interval);
+  }, [user.isLoggedIn, user.username]);
 
   // Load user session and check referral code on mount
   useEffect(() => {
-    // 1. Process referral code if present in URL
+    // 0. Process room parameter if present in URL
     const urlParams = new URLSearchParams(window.location.search);
-    const refUser = urlParams.get("ref");
-    if (refUser && refUser.trim() !== "") {
-      const cleanRef = refUser.trim();
-      const claimKey = `minint_ref_claimed_${cleanRef.toLowerCase()}`;
-      const alreadyClaimed = localStorage.getItem(claimKey);
-
-      if (!alreadyClaimed) {
-        fetch("/api/invite/reward", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ referrer: cleanRef })
-        })
-          .then((res) => res.json())
-          .then(() => {
-            localStorage.setItem(claimKey, "true");
-            // If the referrer exists locally on this device, add 5 points to their local stats
-            const refStatsRaw = localStorage.getItem(`minint_stats_${cleanRef}`);
-            if (refStatsRaw) {
-              const parsed = JSON.parse(refStatsRaw);
-              parsed.points = (parsed.points || 0) + 5;
-              localStorage.setItem(`minint_stats_${cleanRef}`, JSON.stringify(parsed));
-              saveAccountToDevice(cleanRef);
-            }
-          })
-          .catch((err) => console.error("Erro ao processar código de convite:", err));
-      }
+    const salaParam = urlParams.get("sala") || urlParams.get("room");
+    let detectedSala: string | null = null;
+    if (salaParam && salaParam.trim() !== "") {
+      detectedSala = salaParam.trim().toUpperCase();
+      setInitialSalaCode(detectedSala);
     }
 
-    // 2. Restore active session
+    // 1. Process referral code if present in URL
+    const refUser = urlParams.get("ref");
+    let hasRefParam = false;
+    if (refUser && refUser.trim() !== "") {
+      const cleanRef = refUser.trim();
+      setInitialRefCode(cleanRef);
+      hasRefParam = true;
+    }
+
+    // 2. Restore active session (only if NOT accessed via referral link)
     const activeSession = localStorage.getItem("minint_active_session");
-    if (activeSession) {
+    if (activeSession && !hasRefParam) {
       const username = activeSession;
       const loadedStatsStr = localStorage.getItem(`minint_stats_${username}`);
       let stats: UserStats = loadedStatsStr ? JSON.parse(loadedStatsStr) : { ...DEFAULT_STATS };
@@ -94,7 +147,12 @@ export default function App() {
         isLoggedIn: true,
         stats
       });
-      setCurrentView("dashboard");
+      
+      if (detectedSala) {
+        setCurrentView("multiplayer");
+      } else {
+        setCurrentView("dashboard");
+      }
 
       // Sync active session user to real server rankings
       fetch("/api/ranking/submit", {
@@ -107,7 +165,11 @@ export default function App() {
           pointsGained: 0,
           currentTotalPoints: stats.points
         })
-      }).catch(err => console.error("Error syncing rank on session load:", err));
+      })
+        .then(() => checkUserRank(username))
+        .catch(() => {
+          // Quiet catch for network/disconnect resilience
+        });
     }
   }, []);
 
@@ -137,7 +199,12 @@ export default function App() {
       isLoggedIn: true,
       stats
     });
-    setCurrentView("dashboard");
+    
+    if (initialSalaCode) {
+      setCurrentView("multiplayer");
+    } else {
+      setCurrentView("dashboard");
+    }
 
     // Save/update this account in the remembered list
     saveAccountToDevice(username);
@@ -153,10 +220,14 @@ export default function App() {
         pointsGained: 0,
         currentTotalPoints: stats.points
       })
-    }).catch(err => console.error("Could not sync candidate rank on login:", err));
+    })
+      .then(() => checkUserRank(username))
+      .catch(() => {
+        // Quiet catch for network/disconnect resilience
+      });
   };
 
-  const handleLogout = () => {
+  const performLogout = () => {
     localStorage.removeItem("minint_active_session");
     setUser({
       username: "",
@@ -164,7 +235,17 @@ export default function App() {
       isLoggedIn: false,
       stats: DEFAULT_STATS
     });
+    setIsExamActive(false);
     setCurrentView("login");
+  };
+
+  const handleLogout = () => {
+    if (currentView === "exam" && isExamActive) {
+      setPendingView("logout");
+      setShowExitConfirm(true);
+    } else {
+      performLogout();
+    }
   };
 
   const handleAvatarSelect = (avatarId: string) => {
@@ -187,10 +268,13 @@ export default function App() {
     if (level) {
       handleLevelChange(level);
     }
+    setIsExamActive(true);
     setCurrentView("exam");
   };
 
   const handleFinishExam = async (score: number, total: number, category: string, level?: Level) => {
+    setIsExamActive(false);
+
     // Points calculation: 10 pts per correct answer (+10 bonus if full score)
     const basePoints = score * 10;
     const bonus = score === total && total > 0 ? 10 : 0;
@@ -253,18 +337,50 @@ export default function App() {
           pointsGained
         })
       });
+      if (user.username) {
+        await checkUserRank(user.username);
+      }
     } catch (err) {
       console.error("Failed submitting scoring statistics to ranking server:", err);
     }
   };
 
   const handleNavigateBack = () => {
-    setCurrentView("dashboard");
-    setSelectedCategory(null);
+    if (currentView === "exam" && isExamActive) {
+      setPendingView("dashboard");
+      setShowExitConfirm(true);
+    } else {
+      setCurrentView("dashboard");
+      setSelectedCategory(null);
+    }
   };
 
   const handleNavigateToView = (view: string) => {
-    setCurrentView(view as any);
+    if (currentView === "exam" && isExamActive && view !== "exam") {
+      setPendingView(view);
+      setShowExitConfirm(true);
+    } else {
+      setCurrentView(view as any);
+    }
+  };
+
+  const handleConfirmExitExam = () => {
+    setIsExamActive(false);
+    setShowExitConfirm(false);
+
+    if (pendingView === "logout") {
+      performLogout();
+    } else {
+      const target = pendingView || "dashboard";
+      setCurrentView(target as any);
+      setSelectedCategory(null);
+    }
+    setPendingView(null);
+  };
+
+  const handleCancelExitExam = () => {
+    setShowExitConfirm(false);
+    setPendingView(null);
   };
 
   // Render current view
@@ -297,6 +413,7 @@ export default function App() {
         return (
           <MultiplayerLobby
             username={user.username}
+            initialRoomCode={initialSalaCode || undefined}
             onNavigateBack={handleNavigateBack}
           />
         );
@@ -326,6 +443,8 @@ export default function App() {
     return (
       <LoginScreen
         onLogin={handleLogin}
+        initialSalaCode={initialSalaCode}
+        initialRefCode={initialRefCode}
         themeMode={themeMode}
         resolvedTheme={resolvedTheme}
         onThemeChange={changeThemeMode}
@@ -340,6 +459,9 @@ export default function App() {
         username={user.username}
         avatarId={user.avatarId}
         currentView={currentView}
+        userRank={userRank}
+        rankNotice={rankNotice}
+        onDismissRankNotice={() => setRankNotice(null)}
         themeMode={themeMode}
         resolvedTheme={resolvedTheme}
         onThemeChange={changeThemeMode}
@@ -363,6 +485,13 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* Exit Exam Confirmation Modal */}
+      <ExitExamConfirmModal
+        isOpen={showExitConfirm}
+        onCancel={handleCancelExitExam}
+        onConfirmExit={handleConfirmExitExam}
+      />
 
       {/* Avatar Selection Modal */}
       <AvatarSelectionModal

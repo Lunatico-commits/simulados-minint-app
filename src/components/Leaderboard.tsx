@@ -19,10 +19,14 @@ export default function Leaderboard({ username }: LeaderboardProps) {
     setLoading(true);
     try {
       const res = await fetch("/api/ranking/list");
-      const data = await res.json();
-      setRankings(data);
-    } catch (err) {
-      console.error("Error fetching rankings:", err);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setRankings(data);
+        }
+      }
+    } catch {
+      // Quiet catch for network resilience
     } finally {
       setLoading(false);
     }

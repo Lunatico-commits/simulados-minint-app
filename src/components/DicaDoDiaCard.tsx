@@ -23,13 +23,22 @@ export default function DicaDoDiaCard() {
 
     try {
       const res = await fetch("/api/gemini/dica-do-dia");
-      const data = await res.json();
-
-      if (data.success && data.tip) {
-        setTip(data.tip);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.tip) {
+          setTip(data.tip);
+          return;
+        }
       }
-    } catch (err) {
-      console.error("Erro ao carregar Dica do Dia:", err);
+      throw new Error("Resposta inválida do servidor");
+    } catch {
+      // Fallback local caso haja falha de rede ou transient disconnect
+      setTip({
+        titulo: "Artigo 198.º da Constituição de Angola (CRA)",
+        categoria: "Legislação & Organização do Estado",
+        conteudo: "A Polícia Nacional de Angola (PNA) é uma instituição armada, apartidária e encarregada de defender a legalidade democrática e garantir a segurança interna e os direitos dos cidadãos.",
+        fonte: "Constituição da República de Angola (CRA)"
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);

@@ -8,7 +8,6 @@ import DicaDoDiaCard from "./DicaDoDiaCard";
 import LevelSelectionModal from "./LevelSelectionModal";
 import CategoryDonutChart from "./CategoryDonutChart";
 import WhatsAppIcon from "./WhatsAppIcon";
-import AdSensePlaceholder from "./AdSensePlaceholder";
 import BadgesSection from "./BadgesSection";
 import AvatarDisplay from "./AvatarDisplay";
 import InviteButton from "./InviteButton";
@@ -256,9 +255,6 @@ export default function Dashboard({
 
       {/* RECHARTS DONUT CHART: Proporção de Acertos por Matéria */}
       <CategoryDonutChart stats={stats} />
-
-      {/* ADSENSE AD PLACEHOLDER */}
-      <AdSensePlaceholder slot="banner" />
 
       {/* Categories Grid */}
       <div className="space-y-4">
