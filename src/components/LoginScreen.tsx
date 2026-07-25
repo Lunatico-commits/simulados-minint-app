@@ -160,22 +160,14 @@ export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, 
           localStorage.setItem("minint_users", JSON.stringify(storedUsers));
           saveAccountToDevice(data.username);
 
-          setSuccess("Conta criada com sucesso! A entrar...");
+          setSuccess("Conta criada e gravada no servidor com sucesso! A entrar...");
           setTimeout(() => {
             onLogin(data.username);
           }, 300);
           return;
         } else {
-          // If server returned duplicate or error, proceed with local account creation
-          const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
-          storedUsers[cleanUser.toLowerCase()] = { username: cleanUser, password: cleanPass };
-          localStorage.setItem("minint_users", JSON.stringify(storedUsers));
-          saveAccountToDevice(cleanUser);
-
-          setSuccess("Conta registada localmente! A entrar...");
-          setTimeout(() => {
-            onLogin(cleanUser);
-          }, 300);
+          // Display server validation/rejection message (e.g. account already exists)
+          setError(data.error || "Não foi possível registar a conta no servidor.");
           return;
         }
       } catch (err) {
