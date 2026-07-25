@@ -58,6 +58,10 @@ app.post("/api/auth/register", (req, res) => {
       return res.status(400).json({ error: "O Nome/NIP do candidato deve ter pelo menos 3 caracteres." });
     }
 
+    if (cleanPassword.length < 4) {
+      return res.status(400).json({ error: "A senha deve ter no mínimo 4 caracteres." });
+    }
+
     const usernameLower = cleanUsername.toLowerCase();
     if (userAccounts.has(usernameLower)) {
       return res.status(400).json({ error: "Este candidato/NIP já se encontra registado. Por favor faça Login para aceder." });
@@ -120,12 +124,8 @@ app.post("/api/auth/login", (req, res) => {
     const usernameLower = cleanUsername.toLowerCase();
     const account = userAccounts.get(usernameLower);
 
-    if (!account) {
-      return res.status(404).json({ error: "Candidato/NIP não encontrado no sistema. Por favor, crie uma conta em 'REGISTAR'." });
-    }
-
-    if (account.password !== cleanPassword) {
-      return res.status(401).json({ error: "Senha incorreta. Verifique os dados digitados e tente novamente." });
+    if (!account || account.password !== cleanPassword) {
+      return res.status(401).json({ error: "Nome de utilizador ou senha incorretos." });
     }
 
     console.log(`[AUTH] Login com sucesso: ${account.username}`);
@@ -346,9 +346,14 @@ app.post("/api/multiplayer/join", (req, res) => {
       return res.json({ success: true, roomCode: cleanCode, room });
     }
 
+    // Enforce 2-player capacity (Duelo 1 vs 1)
+    if (room.players.length >= 2) {
+      return res.status(400).json({ error: "Esta sala já está cheia (limite de 2 participantes para Duelo 1 vs 1)." });
+    }
+
     const newPlayer: Player = {
       username: cleanUsername,
-      isReady: false,
+      isReady: true,
       score: 0,
       progress: 0,
       isHost: false,
@@ -356,12 +361,25 @@ app.post("/api/multiplayer/join", (req, res) => {
     };
 
     room.players.push(newPlayer);
-    room.messages.push({
-      id: `sys_${Date.now()}`,
-      username: "Sistema",
-      text: `O candidato ${cleanUsername} juntou-se à sala de preparação.`,
-      timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-    });
+    
+    // When second player joins, room becomes full (1 vs 1 duel) and closes to new participants
+    if (room.players.length === 2) {
+      room.players.forEach(p => p.isReady = true);
+      room.messages.push({
+        id: `sys_${Date.now()}`,
+        username: "Sistema",
+        text: `Duelo 1 vs 1 completo! ${cleanUsername} entrou. A sala foi fechada e o simulado está a iniciar...`,
+        timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
+      });
+      room.status = "playing";
+    } else {
+      room.messages.push({
+        id: `sys_${Date.now()}`,
+        username: "Sistema",
+        text: `O candidato ${cleanUsername} juntou-se à sala de preparação.`,
+        timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
+      });
+    }
 
     rooms.set(cleanCode, room);
     broadcastRoomState(cleanCode);

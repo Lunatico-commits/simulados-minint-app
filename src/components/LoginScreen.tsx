@@ -100,10 +100,15 @@ export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, 
       return;
     }
 
+    if (!isLogin && cleanPass.length < 4) {
+      setError("A senha deve ter no mínimo 4 caracteres.");
+      return;
+    }
+
     setLoading(true);
 
     if (isLogin) {
-      // Login flow with server priority & seamless offline local storage fallback
+      // Login flow with strict server validation & local storage fallback for offline mode
       try {
         const res = await fetchAuthWithTimeout("/api/auth/login", { username: cleanUser, password: cleanPass }, 4000);
         const data = await res.json();
@@ -116,41 +121,21 @@ export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, 
           onLogin(data.username);
           return;
         } else {
-          // Check local storage for account if server returned an error (e.g. 404 or missing account)
-          const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
-          const localRecord = storedUsers[cleanUser.toLowerCase()];
-
-          if (localRecord) {
-            if (localRecord.password.trim() === cleanPass) {
-              saveAccountToDevice(localRecord.username);
-              onLogin(localRecord.username);
-              return;
-            } else {
-              setError("Senha incorreta. Verifique os dados e tente novamente.");
-              return;
-            }
-          } else {
-            // Account not found on server or locally -> create & log in automatically to prevent blocking
-            storedUsers[cleanUser.toLowerCase()] = { username: cleanUser, password: cleanPass };
-            localStorage.setItem("minint_users", JSON.stringify(storedUsers));
-            saveAccountToDevice(cleanUser);
-            onLogin(cleanUser);
-            return;
-          }
+          // Server rejected credentials or account not found
+          setError(data.error || "Nome de utilizador ou senha incorretos.");
+          return;
         }
       } catch (err) {
-        console.warn("Servidor de autenticação indisponível, a usar autenticação local resiliente:", err);
-        // Fallback for offline usage or network timeout: auto-authenticate locally
+        console.warn("Servidor indisponível, a verificar conta gravada localmente:", err);
+        // Fallback for offline usage
         const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
         const localRecord = storedUsers[cleanUser.toLowerCase()];
 
-        if (localRecord && localRecord.password.trim() !== cleanPass) {
-          setError("Senha incorreta para esta conta local.");
+        if (localRecord && localRecord.password.trim() === cleanPass) {
+          saveAccountToDevice(localRecord.username);
+          onLogin(localRecord.username);
         } else {
-          storedUsers[cleanUser.toLowerCase()] = { username: cleanUser, password: cleanPass };
-          localStorage.setItem("minint_users", JSON.stringify(storedUsers));
-          saveAccountToDevice(cleanUser);
-          onLogin(cleanUser);
+          setError("Nome de utilizador ou senha incorretos.");
         }
       } finally {
         setLoading(false);

@@ -216,25 +216,8 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
         setRoom(data.room);
         connectToRoomStream(cleanCode);
       } else {
-        const stored = localStorage.getItem(`minint_local_room_${cleanCode}`);
-        if (stored) {
-          const parsed: Room = JSON.parse(stored);
-          if (!parsed.players.some(p => p.username.toLowerCase() === cleanUser.toLowerCase())) {
-            parsed.players.push({
-              username: cleanUser,
-              isReady: false,
-              score: 0,
-              progress: 0,
-              isHost: false,
-              answers: {}
-            });
-            localStorage.setItem(`minint_local_room_${cleanCode}`, JSON.stringify(parsed));
-          }
-          setRoom(parsed);
-        } else {
-          const localRoom = createLocalFallbackRoom(cleanUser, selectedRoomLevel, cleanCode);
-          setRoom(localRoom);
-        }
+        // Server returned specific error (e.g., room full, invalid code, simulation already started)
+        setError(data.error || "Código inválido ou sala indisponível.");
       }
     } catch (err: any) {
       console.warn("Servidor de multiplayer indisponível ao entrar na sala. A usar modo local:", err);
