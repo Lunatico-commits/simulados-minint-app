@@ -1,0 +1,477 @@
+import React, { useState, useEffect } from "react";
+import { Shield, Key, User, ArrowRight, UserPlus, LogIn, AlertCircle, Sun, Moon, Monitor, Heart, Users, Trash2, ChevronRight, UserCheck, Plus, Sparkles } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { ThemeMode } from "../hooks/useTheme";
+import WhatsAppIcon from "./WhatsAppIcon";
+import SupportModal from "./SupportModal";
+import LegalModal, { LegalModalType } from "./LegalModal";
+import AvatarDisplay from "./AvatarDisplay";
+import { getSavedAccounts, removeAccountFromDevice, SavedAccount } from "../data/accountManager";
+
+const WHATSAPP_VIP_LINK = "https://chat.whatsapp.com/L1nLLLK8M4xGlSGUfzK6ID?s=cl&p=a&ilr=4";
+
+interface LoginScreenProps {
+  onLogin: (username: string) => void;
+  themeMode?: ThemeMode;
+  resolvedTheme?: "dark" | "light";
+  onThemeChange?: (mode: ThemeMode) => void;
+}
+
+export default function LoginScreen({ onLogin, themeMode, resolvedTheme, onThemeChange }: LoginScreenProps) {
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [legalModalType, setLegalModalType] = useState<LegalModalType>(null);
+
+  // Multi-Account Saved Profiles state
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const [showAccountSelector, setShowAccountSelector] = useState(true);
+
+  useEffect(() => {
+    const loaded = getSavedAccounts();
+    setSavedAccounts(loaded);
+    setShowAccountSelector(loaded.length > 0);
+  }, []);
+
+  const handleRemoveAccount = (usernameToRemove: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = removeAccountFromDevice(usernameToRemove);
+    setSavedAccounts(updated);
+    if (updated.length === 0) {
+      setShowAccountSelector(false);
+    }
+  };
+
+  const handleSelectSavedAccount = (accountUsername: string) => {
+    const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+    const normalizedUser = accountUsername.toLowerCase().trim();
+    if (!storedUsers[normalizedUser]) {
+      storedUsers[normalizedUser] = {
+        username: accountUsername,
+        password: "123"
+      };
+      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+    }
+    onLogin(accountUsername);
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!username.trim() || !password.trim()) {
+      setError("Por favor, preencha todos os campos obrigatórios.");
+      return;
+    }
+
+    if (username.length < 3) {
+      setError("O nome de usuário deve ter pelo menos 3 caracteres.");
+      return;
+    }
+
+    const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+
+    if (isLogin) {
+      // Login flow
+      const normalizedUser = username.toLowerCase().trim();
+      const userRecord = storedUsers[normalizedUser];
+
+      if (!userRecord || userRecord.password !== password) {
+        setError("Nome de usuário ou senha incorretos.");
+        return;
+      }
+
+      onLogin(userRecord.username);
+    } else {
+      // Registration flow
+      const normalizedUser = username.toLowerCase().trim();
+      if (storedUsers[normalizedUser]) {
+        setError("Este nome de usuário já está registado.");
+        return;
+      }
+
+      // Add new user
+      storedUsers[normalizedUser] = {
+        username: username.trim(),
+        password: password
+      };
+
+      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+      setSuccess("Conta criada com sucesso! Faça login para aceder.");
+      setIsLogin(true);
+      setPassword("");
+    }
+  };
+
+  const handleQuickLogin = (user: string, pass: string) => {
+    // Setup standard mock account if not exists
+    const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+    const normalizedUser = user.toLowerCase().trim();
+    if (!storedUsers[normalizedUser]) {
+      storedUsers[normalizedUser] = {
+        username: user,
+        password: pass
+      };
+      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+    }
+    setUsername(user);
+    setPassword(pass);
+    onLogin(user);
+  };
+
+  return (
+    <div className="min-h-screen bg-sleek-bg text-slate-200 flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans transition-colors duration-200">
+      {/* Top right Theme Switcher */}
+      {onThemeChange && themeMode && (
+        <div className="absolute top-4 right-4 z-20 flex items-center bg-sleek-card border border-slate-800 rounded-xl p-1 shadow-md">
+          <button
+            onClick={() => onThemeChange("auto")}
+            title={`Modo Automático (Sistema ${resolvedTheme === "dark" ? "Escuro" : "Claro"})`}
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+              themeMode === "auto"
+                ? "bg-amber-500 text-slate-950 font-bold shadow-sm"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span className="text-[10px] uppercase font-mono">Auto</span>
+          </button>
+
+          <button
+            onClick={() => onThemeChange("dark")}
+            title="Modo Escuro"
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+              themeMode === "dark"
+                ? "bg-amber-500 text-slate-950 font-bold shadow-sm"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Moon className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            onClick={() => onThemeChange("light")}
+            title="Modo Claro"
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+              themeMode === "light"
+                ? "bg-amber-500 text-slate-950 font-bold shadow-sm"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Decorative Premium Background Elements */}
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full bg-blue-950/20 blur-3xl animate-pulse-subtle"></div>
+      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full bg-sleek-accent/5 blur-3xl animate-pulse-subtle" style={{ animationDelay: "4s" }}></div>
+
+      <div className="w-full max-w-md z-10">
+        {/* Emblem & Logo Header */}
+        <div className="text-center mb-8 flex flex-col items-center">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5 }}
+            className="w-20 h-20 bg-gradient-to-br from-blue-700 via-sleek-bg to-sleek-accent rounded-2xl flex items-center justify-center border-2 border-sleek-accent/40 shadow-xl mb-4 shadow-sleek-accent/5"
+          >
+            <Shield className="w-10 h-10 text-sleek-accent" />
+          </motion.div>
+          <motion.h1
+            initial={{ y: -10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="text-2xl md:text-3xl font-extrabold font-display tracking-tight uppercase flex items-center justify-center gap-2"
+          >
+            <span className="text-slate-950 dark:text-slate-100 font-extrabold transition-colors">SIMULADOS</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 via-amber-600 to-amber-700 dark:from-blue-400 dark:via-amber-300 dark:to-amber-500 gold-glow font-black">MININT</span>
+          </motion.h1>
+          <p className="text-xs text-slate-400 uppercase tracking-widest mt-1 font-mono">
+            Plataforma Oficial de Simulados para Concursos
+          </p>
+        </div>
+
+        {/* Card Container: Either Profile Selector or Login Form */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.4 }}
+          className="bg-sleek-card border border-slate-800/80 rounded-3xl p-6 md:p-8 shadow-2xl backdrop-blur-md relative overflow-hidden"
+        >
+          {/* Top border gold highlight */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-600 via-amber-400 to-amber-600"></div>
+
+          {showAccountSelector && savedAccounts.length > 0 ? (
+            /* ========================================================= */
+            /* PROFILE SELECTOR VIEW (Netflix / Facebook style switcher) */
+            /* ========================================================= */
+            <div className="space-y-5">
+              <div className="text-center space-y-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1 mb-1">
+                  <Users className="w-3 h-3 text-amber-400" /> Dispositivo Reconhecido
+                </span>
+                <h2 className="text-xl font-bold font-display text-slate-100">
+                  Quem vai estudar hoje?
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Selecione o seu perfil para aceder com 1 clique
+                </p>
+              </div>
+
+              {/* Saved Accounts List */}
+              <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
+                {savedAccounts.map((acc) => (
+                  <motion.div
+                    key={acc.username}
+                    whileHover={{ scale: 1.015, x: 2 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleSelectSavedAccount(acc.username)}
+                    className="p-3.5 rounded-2xl bg-sleek-card-sec/80 hover:bg-sleek-card-hover border border-slate-800 hover:border-amber-500/50 transition-all cursor-pointer flex items-center justify-between gap-3 group relative shadow-md"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <AvatarDisplay avatarId={acc.avatarId} size="md" showBadge />
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-bold font-display text-slate-100 group-hover:text-amber-300 transition-colors truncate">
+                          Continuar como <span className="text-amber-400 font-extrabold">{acc.username}</span>
+                        </h3>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
+                          <span>{acc.points || 0} PTS</span>
+                          <span>•</span>
+                          <span>{acc.totalExams || 0} Simulados</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={(e) => handleRemoveAccount(acc.username, e)}
+                        title="Remover conta do dispositivo"
+                        className="p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-950/40 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Management Actions */}
+              <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAccountSelector(false);
+                    setIsLogin(true);
+                    setError("");
+                    setSuccess("");
+                  }}
+                  className="w-full py-2.5 px-4 bg-sleek-card-sec hover:bg-sleek-card-hover border border-slate-800 text-slate-200 hover:text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <LogIn className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Entrar com outra conta</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAccountSelector(false);
+                    setIsLogin(false);
+                    setError("");
+                    setSuccess("");
+                  }}
+                  className="w-full py-2.5 px-4 bg-transparent hover:bg-sleek-card-hover border border-dashed border-slate-800 text-slate-400 hover:text-amber-400 font-semibold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Criar nova conta de candidato</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ========================================================= */
+            /* MANUAL LOGIN / REGISTRATION FORM VIEW                    */
+            /* ========================================================= */
+            <>
+              {savedAccounts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAccountSelector(true)}
+                  className="mb-4 text-xs font-mono font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 hover:underline cursor-pointer transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>← Ver contas salvas neste dispositivo ({savedAccounts.length})</span>
+                </button>
+              )}
+
+              {/* Toggle Tab Login / Register */}
+              <div className="flex bg-sleek-card-sec rounded-xl p-1 mb-6 border border-slate-800">
+                <button
+                  onClick={() => { setIsLogin(true); setError(""); setSuccess(""); }}
+                  className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isLogin ? "bg-gradient-to-r from-blue-700 to-blue-600 text-white shadow-md" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <LogIn className="w-3.5 h-3.5" /> Entrar
+                </button>
+                <button
+                  onClick={() => { setIsLogin(false); setError(""); setSuccess(""); }}
+                  className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    !isLogin ? "bg-gradient-to-r from-amber-600 to-amber-700 text-white shadow-md" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> Registar
+                </button>
+              </div>
+
+              {/* Notifications */}
+              {error && (
+                <div className="mb-4 p-3 bg-red-950/50 border border-red-800/50 rounded-xl text-xs text-red-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {success && (
+                <div className="mb-4 p-3 bg-emerald-950/50 border border-emerald-800/50 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{success}</span>
+                </div>
+              )}
+
+              {/* Form */}
+              <form onSubmit={handleFormSubmit} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-amber-400" /> Nome do Candidato / NIP
+                  </label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Ex: CandidatoManuel"
+                    className="w-full bg-sleek-card-sec border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-colors"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                    <Key className="w-3.5 h-3.5 text-amber-400" /> Senha de Acesso
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full bg-sleek-card-sec border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 transition-colors"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all duration-200 shadow-lg flex items-center justify-center gap-2 mt-2 ${
+                    isLogin
+                      ? "bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500 text-white shadow-blue-950/30"
+                      : "bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-amber-950/30"
+                  }`}
+                >
+                  {isLogin ? "Aceder à Plataforma" : "Criar Conta de Candidato"}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </form>
+
+              {/* Demonstration Accounts Quick Action */}
+              <div className="mt-6 pt-5 border-t border-slate-800/80 text-center space-y-2">
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">
+                  Acesso Rápido para Teste
+                </p>
+                <div className="flex gap-2 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickLogin("CandidatoManuel", "123456")}
+                    className="px-3 py-1.5 bg-sleek-card-sec hover:bg-sleek-card-hover border border-slate-800 hover:border-amber-500/30 rounded-lg text-[11px] text-amber-400 font-semibold cursor-pointer transition-all"
+                  >
+                    CandidatoManuel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickLogin("RecrutaSilva", "123456")}
+                    className="px-3 py-1.5 bg-sleek-card-sec hover:bg-sleek-card-hover border border-slate-800 hover:border-amber-500/30 rounded-lg text-[11px] text-blue-400 font-semibold cursor-pointer transition-all"
+                  >
+                    RecrutaSilva
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </motion.div>
+
+        {/* Community & Support Buttons */}
+        <div className="mt-6 space-y-2.5">
+          <a
+            href={WHATSAPP_VIP_LINK}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <WhatsAppIcon className="w-4 h-4 fill-current" />
+            <span>Entrar na Comunidade VIP (WhatsApp)</span>
+          </a>
+
+          <button
+            type="button"
+            onClick={() => setIsSupportModalOpen(true)}
+            className="w-full py-2 px-4 bg-sleek-card border border-slate-800 hover:border-blue-500/40 text-blue-300 hover:text-blue-200 text-xs font-semibold uppercase tracking-wider rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Heart className="w-3.5 h-3.5 text-blue-400 fill-current" />
+            <span>Apoie este Projeto 💙</span>
+          </button>
+        </div>
+
+        {/* Footer info & Legal links */}
+        <div className="mt-6 text-center space-y-1 font-mono">
+          <p className="text-[10px] text-slate-500 uppercase tracking-widest">
+            MINISTÉRIO DO INTERIOR • REPÚBLICA DE ANGOLA
+          </p>
+
+          <div className="flex items-center justify-center gap-3 text-[11px] text-slate-400 pt-1">
+            <button
+              type="button"
+              onClick={() => setLegalModalType("terms")}
+              className="hover:text-amber-400 transition-colors underline underline-offset-2 cursor-pointer"
+            >
+              Termos de Uso
+            </button>
+            <span className="text-slate-700">•</span>
+            <button
+              type="button"
+              onClick={() => setLegalModalType("privacy")}
+              className="hover:text-amber-400 transition-colors underline underline-offset-2 cursor-pointer"
+            >
+              Política de Privacidade
+            </button>
+          </div>
+        </div>
+
+        {/* Support Modal */}
+        <SupportModal
+          isOpen={isSupportModalOpen}
+          onClose={() => setIsSupportModalOpen(false)}
+        />
+
+        {/* Legal Modal */}
+        <LegalModal
+          type={legalModalType}
+          onClose={() => setLegalModalType(null)}
+        />
+      </div>
+    </div>
+  );
+}

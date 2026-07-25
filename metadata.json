@@ -1,0 +1,6 @@
+{
+  "name": "Simulados MININT Angola",
+  "description": "Plataforma premium e moderna de simulados e exames em tempo real para o Concurso Público do Ministério do Interior de Angola (MININT). Inclui painel de estatísticas, modo multiplayer, chat e rankings.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

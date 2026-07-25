@@ -1,0 +1,212 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+:root {
+  --color-sleek-bg: #0A0D12;
+  --color-sleek-card: #0F141D;
+  --color-sleek-card-sec: #141A26;
+  --color-sleek-card-hover: #161C28;
+  --color-sleek-accent: #eaaf0c;
+  color-scheme: dark;
+}
+
+html.light {
+  --color-sleek-bg: #F4F6F9;
+  --color-sleek-card: #FFFFFF;
+  --color-sleek-card-sec: #EAEFF5;
+  --color-sleek-card-hover: #DFE6F0;
+  --color-sleek-accent: #d97706;
+  color-scheme: light;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-sleek-bg: var(--color-sleek-bg);
+  --color-sleek-card: var(--color-sleek-card);
+  --color-sleek-card-sec: var(--color-sleek-card-sec);
+  --color-sleek-card-hover: var(--color-sleek-card-hover);
+  --color-sleek-accent: var(--color-sleek-accent);
+}
+
+body {
+  background-color: var(--color-sleek-bg);
+  color: #e2e8f0;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+html.light body {
+  color: #0f172a;
+}
+
+/* Light mode text & border adjustments for high contrast legibility while retaining gold accents */
+html.light .text-slate-100:not(.text-transparent) { color: #0f172a !important; }
+html.light .text-slate-200:not(.text-transparent) { color: #1e293b !important; }
+html.light .text-slate-300:not(.text-transparent) { color: #334155 !important; }
+html.light .text-slate-400:not(.text-transparent) { color: #475569 !important; }
+html.light .text-slate-500:not(.text-transparent) { color: #64748b !important; }
+
+html.light .text-slate-900:not(.text-transparent),
+html.light .text-slate-950:not(.text-transparent) {
+  color: #020617 !important;
+}
+
+html.light .border-slate-800,
+html.light .border-slate-800\/80,
+html.light .border-slate-800\/60,
+html.light .border-slate-800\/40,
+html.light .border-slate-800\/30 {
+  border-color: #cbd5e1 !important;
+}
+
+html.light .border-slate-700,
+html.light .border-slate-700\/80 {
+  border-color: #94a3b8 !important;
+}
+
+html.light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html.light .divide-slate-800\/40 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+html.light .bg-slate-900,
+html.light .bg-slate-900\/50,
+html.light .bg-slate-900\/80 {
+  background-color: #e2e8f0 !important;
+}
+
+html.light .bg-slate-800,
+html.light .bg-slate-800\/80,
+html.light .bg-slate-800\/50 {
+  background-color: #e2e8f0 !important;
+}
+
+/* Custom background animations */
+@keyframes pulse-subtle {
+  0%, 100% { transform: scale(1); opacity: 0.15; }
+  50% { transform: scale(1.05); opacity: 0.25; }
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 8s infinite ease-in-out;
+}
+
+/* Golden text stroke and glow effects for premium look */
+.gold-glow {
+  text-shadow: 0 0 12px rgba(234, 179, 8, 0.4);
+}
+
+html.light .gold-glow {
+  text-shadow: 0 0 8px rgba(217, 119, 6, 0.3);
+}
+
+.gold-border-glow {
+  box-shadow: 0 0 15px rgba(234, 179, 8, 0.15);
+}
+
+html.light .gold-border-glow {
+  box-shadow: 0 0 15px rgba(217, 119, 6, 0.12);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-sleek-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 3px;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d97706;
+}
+
+/* Custom Invite / Referral Banner styling for high contrast in both Light & Dark modes */
+.invite-banner-card {
+  background: linear-gradient(135deg, rgba(69, 26, 3, 0.85) 0%, rgba(15, 23, 42, 0.95) 50%, rgba(15, 23, 42, 0.95) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+}
+
+html.light .invite-banner-card {
+  background: linear-gradient(135deg, #fef3c7 0%, #fffbe3 50%, #f8fafc 100%) !important;
+  border: 1px solid #f59e0b !important;
+  box-shadow: 0 4px 15px -2px rgba(217, 119, 6, 0.15) !important;
+}
+
+.invite-banner-title {
+  color: #f8fafc;
+}
+html.light .invite-banner-title {
+  color: #0f172a !important;
+}
+
+.invite-banner-desc {
+  color: #cbd5e1;
+}
+html.light .invite-banner-desc {
+  color: #334155 !important;
+}
+
+.invite-banner-badge {
+  background-color: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+html.light .invite-banner-badge {
+  background-color: #fde68a !important;
+  border: 1px solid #d97706 !important;
+  color: #78350f !important;
+}
+
+.invite-banner-points-label {
+  color: #fcd34d;
+}
+html.light .invite-banner-points-label {
+  color: #92400e !important;
+}
+
+.invite-banner-icon-box {
+  background-color: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+html.light .invite-banner-icon-box {
+  background-color: #fde68a !important;
+  border: 1px solid #f59e0b !important;
+  color: #78350f !important;
+}
+
+/* Button style for Convidar Amigos */
+.btn-invite-gold {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #020617 !important;
+  border: 1px solid #fbbf24;
+  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.25);
+  font-weight: 800 !important;
+}
+.btn-invite-gold:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: #020617 !important;
+}
+html.light .btn-invite-gold {
+  background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+  color: #ffffff !important;
+  border: 1px solid #f59e0b;
+  box-shadow: 0 4px 12px rgba(180, 83, 9, 0.3);
+}
+html.light .btn-invite-gold:hover {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff !important;
+}
