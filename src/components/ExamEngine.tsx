@@ -466,108 +466,117 @@ export default function ExamEngine({
                 </div>
               </div>
 
-              {/* Question Card */}
-              <div className="bg-sleek-card backdrop-blur-md border border-slate-800/80 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl gold-border-glow relative">
-                <div className="space-y-4">
-                  <div className="flex gap-2.5 items-start">
-                    <span className="w-7 h-7 rounded-lg bg-sleek-card-sec border border-blue-900 text-blue-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                      ?
-                    </span>
-                    <h3 className="text-slate-100 text-sm md:text-md font-semibold leading-relaxed">
-                      {currentQuestion.pergunta}
-                    </h3>
+              {/* Question Card with Smooth Slide Animation */}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentQuestion.id || currentIndex}
+                  initial={{ opacity: 0, x: 35 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -35 }}
+                  transition={{ duration: 0.28, ease: "easeOut" }}
+                  className="bg-sleek-card backdrop-blur-md border border-slate-800/80 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl gold-border-glow relative"
+                >
+                  <div className="space-y-4">
+                    <div className="flex gap-2.5 items-start">
+                      <span className="w-7 h-7 rounded-lg bg-sleek-card-sec border border-blue-900 text-blue-400 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                        ?
+                      </span>
+                      <h3 className="text-slate-100 text-sm md:text-md font-semibold leading-relaxed">
+                        {currentQuestion.pergunta}
+                      </h3>
+                    </div>
                   </div>
-                </div>
 
-                {/* Options List */}
-                <div className="space-y-3">
-                  {currentQuestion.opcoes.map((option, idx) => {
-                    const isSelected = selectedOption === idx;
-                    const isCorrectOption = idx === currentQuestion.resposta_correta;
-                    
-                    let optionStyle = "bg-sleek-card-sec border-slate-800 hover:border-slate-700 hover:bg-sleek-card-hover text-slate-300";
-                    
-                    if (isAnswered) {
-                      if (isCorrectOption) {
-                        optionStyle = "bg-emerald-950/40 border-emerald-500/60 text-emerald-300 font-medium";
+                  {/* Options List */}
+                  <div className="space-y-3">
+                    {currentQuestion.opcoes.map((option, idx) => {
+                      const isSelected = selectedOption === idx;
+                      const isCorrectOption = idx === currentQuestion.resposta_correta;
+                      
+                      let optionStyle = "bg-sleek-card-sec border-slate-800 hover:border-slate-700 hover:bg-sleek-card-hover text-slate-300";
+                      
+                      if (isAnswered) {
+                        if (isCorrectOption) {
+                          optionStyle = "bg-emerald-950/40 border-emerald-500/60 text-emerald-300 font-medium";
+                        } else if (isSelected) {
+                          optionStyle = "bg-red-950/40 border-red-500/60 text-red-300";
+                        } else {
+                          optionStyle = "bg-sleek-card-sec/20 border-slate-900/80 text-slate-500 opacity-60";
+                        }
                       } else if (isSelected) {
-                        optionStyle = "bg-red-950/40 border-red-500/60 text-red-300";
-                      } else {
-                        optionStyle = "bg-sleek-card-sec/20 border-slate-900/80 text-slate-500 opacity-60";
+                        optionStyle = "bg-blue-950/60 border-blue-500/70 text-blue-200 ring-1 ring-blue-500/30";
                       }
-                    } else if (isSelected) {
-                      optionStyle = "bg-blue-950/60 border-blue-500/70 text-blue-200 ring-1 ring-blue-500/30";
-                    }
 
-                    return (
-                      <button
-                        key={idx}
-                        disabled={isAnswered}
-                        onClick={() => handleOptionClick(idx)}
-                        className={`w-full text-left p-4 rounded-xl border text-xs md:text-sm transition-all duration-200 flex items-center justify-between gap-3 ${
-                          !isAnswered ? "cursor-pointer" : "cursor-default"
-                        } ${optionStyle}`}
-                      >
-                        <span>{option}</span>
-                        {isAnswered && isCorrectOption && (
-                          <span className="p-1 bg-emerald-500/10 rounded-full">
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          </span>
-                        )}
-                        {isAnswered && isSelected && !isCorrectOption && (
-                          <span className="p-1 bg-red-500/10 rounded-full">
-                            <X className="w-3.5 h-3.5 text-red-400" />
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Confirm and Navigation Area */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800/80">
-                  <div className="text-xs text-slate-500">
-                    {!isAnswered ? "Selecione uma opção e confirme para ver o feedback" : "Podes avançar para a próxima questão"}
+                      return (
+                        <button
+                          key={idx}
+                          disabled={isAnswered}
+                          onClick={() => handleOptionClick(idx)}
+                          className={`w-full text-left p-4 rounded-xl border text-xs md:text-sm transition-all duration-200 flex items-center justify-between gap-3 ${
+                            !isAnswered ? "cursor-pointer" : "cursor-default"
+                          } ${optionStyle}`}
+                        >
+                          <span>{option}</span>
+                          {isAnswered && isCorrectOption && (
+                            <span className="p-1 bg-emerald-500/10 rounded-full">
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            </span>
+                          )}
+                          {isAnswered && isSelected && !isCorrectOption && (
+                            <span className="p-1 bg-red-500/10 rounded-full">
+                              <X className="w-3.5 h-3.5 text-red-400" />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                    {isAnswered && (
-                      <button
-                        onClick={() => setTutorOpen(!tutorOpen)}
-                        className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider border flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
-                          tutorOpen
-                            ? "bg-amber-500/10 border-amber-500/40 text-amber-400"
-                            : "bg-sleek-card-sec hover:bg-sleek-card-hover border-slate-800 text-slate-400 hover:text-amber-400"
-                        }`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Tutor IA
-                      </button>
-                    )}
+                  {/* Confirm and Navigation Area */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800/80">
+                    <div className="text-xs text-slate-500">
+                      {!isAnswered ? "Selecione uma opção e confirme para ver o feedback" : "Podes avançar para a próxima questão"}
+                    </div>
 
-                    {!isAnswered ? (
-                      <button
-                        disabled={selectedOption === null}
-                        onClick={handleConfirmAnswer}
-                        className={`w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1 transition-all ${
-                          selectedOption !== null
-                            ? "bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-lg shadow-blue-900/30"
-                            : "bg-sleek-card-sec text-slate-500 cursor-not-allowed border border-slate-800/40"
-                        }`}
-                      >
-                        Confirmar Resposta
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleNextQuestion}
-                        className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-blue-700 to-sleek-accent hover:from-blue-600 hover:to-amber-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl cursor-pointer transition-all duration-200 flex items-center justify-center gap-1.5 group"
-                      >
-                        {currentIndex + 1 === questions.length ? "Finalizar Exame" : "Avançar"}
-                        <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                      {isAnswered && (
+                        <button
+                          onClick={() => setTutorOpen(!tutorOpen)}
+                          className={`flex-1 sm:flex-none px-4 py-2.5 rounded-xl text-xs font-semibold uppercase tracking-wider border flex items-center justify-center gap-1.5 cursor-pointer transition-all ${
+                            tutorOpen
+                              ? "bg-amber-500/10 border-amber-500/40 text-amber-400"
+                              : "bg-sleek-card-sec hover:bg-sleek-card-hover border-slate-800 text-slate-400 hover:text-amber-400"
+                          }`}
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Tutor IA
+                        </button>
+                      )}
+
+                      {!isAnswered ? (
+                        <button
+                          disabled={selectedOption === null}
+                          onClick={handleConfirmAnswer}
+                          className={`w-full sm:w-auto px-6 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1 transition-all ${
+                            selectedOption !== null
+                              ? "bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-lg shadow-blue-900/30"
+                              : "bg-sleek-card-sec text-slate-500 cursor-not-allowed border border-slate-800/40"
+                          }`}
+                        >
+                          Confirmar Resposta
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleNextQuestion}
+                          className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-blue-700 to-sleek-accent hover:from-blue-600 hover:to-amber-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl cursor-pointer transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                        >
+                          {currentIndex + 1 === questions.length ? "Finalizar Exame" : "Avançar"}
+                          <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
+                </motion.div>
+              </AnimatePresence>
 
               {/* Standard Quick Explanation (Visible instantly after confirm) */}
               <AnimatePresence>
