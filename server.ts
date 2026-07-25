@@ -13,11 +13,128 @@ app.use(express.json());
 // In-memory data store for leaderboards (Real registered accounts only)
 let rankings: RankingEntry[] = [];
 
+// In-memory data store for candidate user accounts (Server-side permanent store)
+interface UserAccount {
+  username: string;
+  usernameLower: string;
+  password: string;
+  createdAt: number;
+}
+const userAccounts = new Map<string, UserAccount>();
+
+// Seed default accounts so candidates can log in from any device
+const defaultSeedAccounts: UserAccount[] = [
+  { username: "CandidatoManuel", usernameLower: "candidatomanuel", password: "123", createdAt: Date.now() },
+  { username: "GangSt", usernameLower: "gangst", password: "123", createdAt: Date.now() }
+];
+defaultSeedAccounts.forEach(acc => {
+  userAccounts.set(acc.usernameLower, acc);
+  rankings.push({ username: acc.username, points: 50, totalExams: 1, accuracy: 85 });
+});
+
 // In-memory data store for multiplayer rooms
 const rooms = new Map<string, Room>();
 
 // Registry of SSE client connections: roomCode -> array of clients
 const roomClients = new Map<string, Array<{ username: string; res: express.Response }>>();
+
+// ==========================================
+// API: AUTHENTICATION & CANDIDATE REGISTRATION
+// ==========================================
+
+// Register a new Candidate Account
+app.post("/api/auth/register", (req, res) => {
+  try {
+    const { username, password, referralCode } = req.body;
+    const cleanUsername = username ? String(username).trim() : "";
+    const cleanPassword = password ? String(password).trim() : "";
+    const cleanRef = referralCode ? String(referralCode).trim() : "";
+
+    if (!cleanUsername || !cleanPassword) {
+      return res.status(400).json({ error: "Por favor, preencha o Nome de Candidato/NIP e a Senha." });
+    }
+
+    if (cleanUsername.length < 3) {
+      return res.status(400).json({ error: "O Nome/NIP do candidato deve ter pelo menos 3 caracteres." });
+    }
+
+    const usernameLower = cleanUsername.toLowerCase();
+    if (userAccounts.has(usernameLower)) {
+      return res.status(400).json({ error: "Este candidato/NIP já se encontra registado. Por favor faça Login para aceder." });
+    }
+
+    const newAccount: UserAccount = {
+      username: cleanUsername,
+      usernameLower,
+      password: cleanPassword,
+      createdAt: Date.now()
+    };
+
+    userAccounts.set(usernameLower, newAccount);
+
+    // Initialize leaderboard entry if not present
+    if (!rankings.some(r => r.username.toLowerCase() === usernameLower)) {
+      rankings.push({
+        username: cleanUsername,
+        points: 0,
+        totalExams: 0,
+        accuracy: 0
+      });
+    }
+
+    // Process Referral Reward if provided
+    if (cleanRef) {
+      const refIdx = rankings.findIndex(r => r.username.toLowerCase() === cleanRef.toLowerCase());
+      if (refIdx !== -1) {
+        rankings[refIdx].points += 5;
+      } else {
+        rankings.push({
+          username: cleanRef,
+          points: 5,
+          totalExams: 0,
+          accuracy: 0
+        });
+      }
+      rankings.sort((a, b) => b.points - a.points);
+    }
+
+    console.log(`[AUTH] Nova conta registada: ${cleanUsername}`);
+    res.json({ success: true, username: cleanUsername });
+  } catch (err: any) {
+    console.error("Register API Error:", err);
+    res.status(500).json({ error: "Erro interno no servidor ao criar conta." });
+  }
+});
+
+// Login Existing Candidate
+app.post("/api/auth/login", (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const cleanUsername = username ? String(username).trim() : "";
+    const cleanPassword = password ? String(password).trim() : "";
+
+    if (!cleanUsername || !cleanPassword) {
+      return res.status(400).json({ error: "Por favor, preencha o Nome de Candidato/NIP e a Senha." });
+    }
+
+    const usernameLower = cleanUsername.toLowerCase();
+    const account = userAccounts.get(usernameLower);
+
+    if (!account) {
+      return res.status(404).json({ error: "Candidato/NIP não encontrado no sistema. Por favor, crie uma conta em 'REGISTAR'." });
+    }
+
+    if (account.password !== cleanPassword) {
+      return res.status(401).json({ error: "Senha incorreta. Verifique os dados digitados e tente novamente." });
+    }
+
+    console.log(`[AUTH] Login com sucesso: ${account.username}`);
+    res.json({ success: true, username: account.username });
+  } catch (err: any) {
+    console.error("Login API Error:", err);
+    res.status(500).json({ error: "Erro interno no servidor ao efetuar login." });
+  }
+});
 
 // Lazy initialization of the @google/genai client to protect against startup crashes
 let aiClient: GoogleGenAI | null = null;
@@ -155,93 +272,105 @@ function broadcastRoomState(roomCode: string) {
 
 // Create a new private room
 app.post("/api/multiplayer/create", (req, res) => {
-  const { username, nivel } = req.body;
-  if (!username) {
-    return res.status(400).json({ error: "Username is required" });
+  try {
+    const { username, nivel } = req.body;
+    const cleanUsername = username ? String(username).trim() : "";
+    if (!cleanUsername) {
+      return res.status(400).json({ error: "O nome do candidato é obrigatório para criar a sala." });
+    }
+
+    const selectedLevel = nivel || "basico";
+    const code = generateRoomCode();
+    const hostPlayer: Player = {
+      username: cleanUsername,
+      isReady: true,
+      score: 0,
+      progress: 0,
+      isHost: true,
+      answers: {}
+    };
+
+    // Select 5 questions for the multiplayer contest (1 from each core area)
+    const selectedQuestions = getExamQuestions(null, selectedLevel);
+
+    const newRoom: Room = {
+      code,
+      players: [hostPlayer],
+      messages: [
+        {
+          id: `sys_${Date.now()}`,
+          username: "Sistema",
+          text: `Sala privada ${code} criada por ${cleanUsername}. Nível do exame: ${selectedLevel === "basico" ? "Nível Básico" : selectedLevel === "medio" ? "Nível Médio" : "Nível Superior"}.`,
+          timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
+        }
+      ],
+      status: "lobby",
+      questions: selectedQuestions,
+      currentQuestionIndex: 0,
+      createdAt: Date.now(),
+      nivel: selectedLevel
+    };
+
+    rooms.set(code, newRoom);
+    console.log(`[MULTIPLAYER] Sala privada criada: #${code} por ${cleanUsername}`);
+    res.json({ success: true, roomCode: code, room: newRoom });
+  } catch (err: any) {
+    console.error("Error creating room:", err);
+    res.status(500).json({ error: "Erro interno no servidor ao criar a sala privada." });
   }
-
-  const selectedLevel = nivel || "basico";
-  const code = generateRoomCode();
-  const hostPlayer: Player = {
-    username,
-    isReady: true,
-    score: 0,
-    progress: 0,
-    isHost: true,
-    answers: {}
-  };
-
-  // Select 5 questions for the multiplayer contest (1 from each core area)
-  const selectedQuestions = getExamQuestions(null, selectedLevel);
-
-  const newRoom: Room = {
-    code,
-    players: [hostPlayer],
-    messages: [
-      {
-        id: `sys_${Date.now()}`,
-        username: "Sistema",
-        text: `Sala privada ${code} criada por ${username}. Nível do exame: ${selectedLevel === "basico" ? "Nível Básico" : selectedLevel === "medio" ? "Nível Médio" : "Nível Superior"}.`,
-        timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-      }
-    ],
-    status: "lobby",
-    questions: selectedQuestions,
-    currentQuestionIndex: 0,
-    createdAt: Date.now(),
-    nivel: selectedLevel
-  };
-
-  rooms.set(code, newRoom);
-  res.json({ success: true, roomCode: code, room: newRoom });
 });
 
 // Join an existing private room
 app.post("/api/multiplayer/join", (req, res) => {
-  const { username, roomCode } = req.body;
-  if (!username || !roomCode) {
-    return res.status(400).json({ error: "Username and roomCode are required" });
+  try {
+    const { username, roomCode } = req.body;
+    const cleanUsername = username ? String(username).trim() : "";
+    if (!cleanUsername || !roomCode) {
+      return res.status(400).json({ error: "Nome de candidato e código da sala são obrigatórios." });
+    }
+
+    const cleanCode = String(roomCode).toUpperCase().trim();
+    const room = rooms.get(cleanCode);
+
+    if (!room) {
+      return res.status(404).json({ error: "Sala não encontrada. Verifique o código inserido." });
+    }
+
+    if (room.status !== "lobby") {
+      return res.status(400).json({ error: "A simulação nesta sala já iniciou." });
+    }
+
+    // Check if username is already in the room
+    const alreadyJoined = room.players.some(p => p.username.toLowerCase() === cleanUsername.toLowerCase());
+    if (alreadyJoined) {
+      return res.json({ success: true, roomCode: cleanCode, room });
+    }
+
+    const newPlayer: Player = {
+      username: cleanUsername,
+      isReady: false,
+      score: 0,
+      progress: 0,
+      isHost: false,
+      answers: {}
+    };
+
+    room.players.push(newPlayer);
+    room.messages.push({
+      id: `sys_${Date.now()}`,
+      username: "Sistema",
+      text: `O candidato ${cleanUsername} juntou-se à sala de preparação.`,
+      timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
+    });
+
+    rooms.set(cleanCode, room);
+    broadcastRoomState(cleanCode);
+
+    res.json({ success: true, roomCode: cleanCode, room });
+  } catch (err: any) {
+    console.error("Error joining room:", err);
+    res.status(500).json({ error: "Erro interno no servidor ao aceder à sala." });
   }
-
-  const cleanCode = roomCode.toUpperCase().trim();
-  const room = rooms.get(cleanCode);
-
-  if (!room) {
-    return res.status(404).json({ error: "Sala não encontrada. Verifique o código inserido." });
-  }
-
-  if (room.status !== "lobby") {
-    return res.status(400).json({ error: "A simulação nesta sala já iniciou." });
-  }
-
-  // Check if username is already in the room
-  const alreadyJoined = room.players.some(p => p.username.toLowerCase() === username.toLowerCase());
-  if (alreadyJoined) {
-    // If already joined, just return success
-    return res.json({ success: true, roomCode: cleanCode, room });
-  }
-
-  const newPlayer: Player = {
-    username,
-    isReady: false,
-    score: 0,
-    progress: 0,
-    isHost: false,
-    answers: {}
-  };
-
-  room.players.push(newPlayer);
-  room.messages.push({
-    id: `sys_${Date.now()}`,
-    username: "Sistema",
-    text: `O candidato ${username} juntou-se à sala de preparação.`,
-    timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-  });
-
-  rooms.set(cleanCode, room);
-  broadcastRoomState(cleanCode);
-
-  res.json({ success: true, roomCode: cleanCode, room });
 });
 
 // Set Player Ready State

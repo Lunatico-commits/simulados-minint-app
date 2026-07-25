@@ -6,7 +6,7 @@ import WhatsAppIcon from "./WhatsAppIcon";
 import SupportModal from "./SupportModal";
 import LegalModal, { LegalModalType } from "./LegalModal";
 import AvatarDisplay from "./AvatarDisplay";
-import { getSavedAccounts, removeAccountFromDevice, SavedAccount } from "../data/accountManager";
+import { getSavedAccounts, saveAccountToDevice, removeAccountFromDevice, SavedAccount } from "../data/accountManager";
 
 const WHATSAPP_VIP_LINK = "https://chat.whatsapp.com/L1nLLLK8M4xGlSGUfzK6ID?s=cl&p=a&ilr=4";
 
@@ -26,6 +26,7 @@ export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, 
   const [referralCode, setReferralCode] = useState(initialRefCode || "");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [legalModalType, setLegalModalType] = useState<LegalModalType>(null);
 
@@ -57,110 +58,159 @@ export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, 
   };
 
   const handleSelectSavedAccount = (accountUsername: string) => {
-    const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
-    const normalizedUser = accountUsername.toLowerCase().trim();
-    if (!storedUsers[normalizedUser]) {
-      storedUsers[normalizedUser] = {
-        username: accountUsername,
-        password: "123"
-      };
-      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
-    }
-    onLogin(accountUsername);
+    const cleanUser = accountUsername.trim();
+    saveAccountToDevice(cleanUser);
+    onLogin(cleanUser);
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
 
-    if (!username.trim() || !password.trim()) {
-      setError("Por favor, preencha todos os campos obrigatórios.");
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+    const cleanRef = referralCode.trim();
+
+    if (!cleanUser || !cleanPass) {
+      setError("Por favor, preencha o Nome de Candidato/NIP e a Senha.");
       return;
     }
 
-    if (username.length < 3) {
-      setError("O nome de usuário deve ter pelo menos 3 caracteres.");
+    if (cleanUser.length < 3) {
+      setError("O Nome/NIP do candidato deve ter pelo menos 3 caracteres.");
       return;
     }
 
-    const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+    setLoading(true);
 
     if (isLogin) {
-      // Login flow
-      const normalizedUser = username.toLowerCase().trim();
-      const userRecord = storedUsers[normalizedUser];
+      // Server-side authentication with LocalStorage offline fallback
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: cleanUser, password: cleanPass })
+        });
+        const data = await res.json();
 
-      if (!userRecord || userRecord.password !== password) {
-        setError("Nome de usuário ou senha incorretos.");
-        return;
-      }
+        if (res.ok && data.success) {
+          // Save account locally for profile selection on this device
+          const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+          storedUsers[cleanUser.toLowerCase()] = { username: data.username, password: cleanPass };
+          localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+          saveAccountToDevice(data.username);
 
-      onLogin(userRecord.username);
-    } else {
-      // Registration flow
-      const normalizedUser = username.toLowerCase().trim();
-      if (storedUsers[normalizedUser]) {
-        setError("Este nome de usuário já está registado.");
-        return;
-      }
+          onLogin(data.username);
+        } else {
+          // Fallback check in LocalStorage if user registered locally earlier
+          const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+          const localRecord = storedUsers[cleanUser.toLowerCase()];
 
-      // Add new user
-      storedUsers[normalizedUser] = {
-        username: username.trim(),
-        password: password
-      };
-
-      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
-
-      // Process Referral Code if provided
-      const cleanRef = referralCode.trim();
-      if (cleanRef) {
-        const claimKey = `minint_ref_claimed_${cleanRef.toLowerCase()}_by_${normalizedUser}`;
-        const alreadyClaimed = localStorage.getItem(claimKey);
-
-        if (!alreadyClaimed) {
-          fetch("/api/invite/reward", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ referrer: cleanRef })
-          })
-            .then((res) => res.json())
-            .then(() => {
-              localStorage.setItem(claimKey, "true");
-              // If referrer exists in local storage on this device, add 5 points to their stats
-              const refStatsRaw = localStorage.getItem(`minint_stats_${cleanRef}`);
-              if (refStatsRaw) {
-                const parsed = JSON.parse(refStatsRaw);
-                parsed.points = (parsed.points || 0) + 5;
-                localStorage.setItem(`minint_stats_${cleanRef}`, JSON.stringify(parsed));
-              }
-            })
-            .catch((err) => console.error("Erro ao atribuir pontos de referência:", err));
+          if (localRecord && localRecord.password.trim() === cleanPass) {
+            saveAccountToDevice(localRecord.username);
+            onLogin(localRecord.username);
+          } else {
+            setError(data.error || "Candidato/NIP ou senha incorretos.");
+          }
         }
-      }
+      } catch (err) {
+        console.error("Login Network Exception:", err);
+        // Fallback for offline usage
+        const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+        const localRecord = storedUsers[cleanUser.toLowerCase()];
 
-      setSuccess("Conta criada com sucesso! A entrar no sistema...");
-      setTimeout(() => {
-        onLogin(username.trim());
-      }, 400);
+        if (localRecord && localRecord.password.trim() === cleanPass) {
+          saveAccountToDevice(localRecord.username);
+          onLogin(localRecord.username);
+        } else {
+          setError("Sem ligação ao servidor. Verifique a sua conexão de internet.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Server-side registration
+      try {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: cleanUser,
+            password: cleanPass,
+            referralCode: cleanRef
+          })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          // Save account locally for profile selection on this device
+          const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+          storedUsers[cleanUser.toLowerCase()] = { username: data.username, password: cleanPass };
+          localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+          saveAccountToDevice(data.username);
+
+          setSuccess("Conta criada com sucesso no servidor! A autenticar...");
+          setTimeout(() => {
+            onLogin(data.username);
+          }, 300);
+        } else {
+          setError(data.error || "Não foi possível criar a conta. Tente outro nome.");
+        }
+      } catch (err) {
+        console.error("Register Network Exception:", err);
+        // Fallback local registration
+        const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
+        if (storedUsers[cleanUser.toLowerCase()]) {
+          setError("Este candidato/NIP já está registado localmente.");
+        } else {
+          storedUsers[cleanUser.toLowerCase()] = { username: cleanUser, password: cleanPass };
+          localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+          saveAccountToDevice(cleanUser);
+
+          setSuccess("Conta criada localmente! A autenticar...");
+          setTimeout(() => {
+            onLogin(cleanUser);
+          }, 300);
+        }
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
-  const handleQuickLogin = (user: string, pass: string) => {
-    // Setup standard mock account if not exists
-    const storedUsers = JSON.parse(localStorage.getItem("minint_users") || "{}");
-    const normalizedUser = user.toLowerCase().trim();
-    if (!storedUsers[normalizedUser]) {
-      storedUsers[normalizedUser] = {
-        username: user,
-        password: pass
-      };
-      localStorage.setItem("minint_users", JSON.stringify(storedUsers));
+  const handleQuickLogin = async (user: string, pass: string) => {
+    const cleanUser = user.trim();
+    const cleanPass = pass.trim();
+    setUsername(cleanUser);
+    setPassword(cleanPass);
+    setLoading(true);
+
+    try {
+      let res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: cleanUser, password: cleanPass })
+      });
+
+      if (!res.ok) {
+        res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: cleanUser, password: cleanPass })
+        });
+      }
+
+      const data = await res.json();
+      const finalName = data.username || cleanUser;
+      saveAccountToDevice(finalName);
+      onLogin(finalName);
+    } catch (err) {
+      saveAccountToDevice(cleanUser);
+      onLogin(cleanUser);
+    } finally {
+      setLoading(false);
     }
-    setUsername(user);
-    setPassword(pass);
-    onLogin(user);
   };
 
   return (
@@ -487,14 +537,26 @@ export default function LoginScreen({ onLogin, initialSalaCode, initialRefCode, 
 
                 <button
                   type="submit"
-                  className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all duration-200 shadow-lg flex items-center justify-center gap-2 mt-2 ${
-                    isLogin
-                      ? "bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500 text-white shadow-blue-950/30"
-                      : "bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-amber-950/30"
+                  disabled={loading}
+                  className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 shadow-lg flex items-center justify-center gap-2 mt-2 ${
+                    loading
+                      ? "bg-slate-700 text-slate-400 cursor-not-allowed opacity-80"
+                      : isLogin
+                      ? "bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500 text-white shadow-blue-950/30 cursor-pointer"
+                      : "bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white shadow-amber-950/30 cursor-pointer"
                   }`}
                 >
-                  {isLogin ? "Aceder à Plataforma" : "Criar Conta de Candidato"}
-                  <ArrowRight className="w-4 h-4" />
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      A Processar...
+                    </span>
+                  ) : (
+                    <>
+                      {isLogin ? "Aceder à Plataforma" : "Criar Conta de Candidato"}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
                 </button>
               </form>
 

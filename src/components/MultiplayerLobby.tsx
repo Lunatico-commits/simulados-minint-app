@@ -93,55 +93,104 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     eventSourceRef.current = source;
   };
 
+  // Helper to execute fetch with timeout
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 8000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(id);
+      return response;
+    } catch (err) {
+      clearTimeout(id);
+      throw err;
+    }
+  };
+
   const [selectedRoomLevel, setSelectedRoomLevel] = useState<Level>("basico");
 
-  // Create Private Room
-  const handleCreateRoom = async () => {
+  // Create Private Room with Try/Catch, Timeout & Auto-retry
+  const handleCreateRoom = async (retryCount = 0) => {
+    const cleanUser = username ? username.trim() : "";
+    if (!cleanUser) {
+      setError("Nome de candidato inválido para criar sala.");
+      return;
+    }
+
     setLoading(true);
     setError("");
+
     try {
-      const res = await fetch("/api/multiplayer/create", {
+      const res = await fetchWithTimeout("/api/multiplayer/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, nivel: selectedRoomLevel })
-      });
+        body: JSON.stringify({ username: cleanUser, nivel: selectedRoomLevel })
+      }, 8000);
+
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         setRoom(data.room);
         connectToRoomStream(data.roomCode);
       } else {
         setError(data.error || "Ocorreu um erro ao criar a sala privada.");
       }
-    } catch (err) {
-      setError("Erro de ligação com o servidor.");
+    } catch (err: any) {
+      console.error("Erro na criação de sala:", err);
+      if (retryCount < 1) {
+        await new Promise(r => setTimeout(r, 1000));
+        return handleCreateRoom(retryCount + 1);
+      }
+      if (err.name === "AbortError") {
+        setError("O servidor demorou a responder ao criar a sala. Verifique a sua ligação e tente novamente.");
+      } else {
+        setError("Não foi possível conectar ao servidor de exames. Por favor, tente novamente.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   // Join Existing Room with specific code
-  const joinRoomWithCode = async (codeToJoin: string) => {
-    if (!codeToJoin.trim()) return;
+  const joinRoomWithCode = async (codeToJoin: string, retryCount = 0) => {
+    const cleanCode = codeToJoin ? codeToJoin.toUpperCase().trim() : "";
+    const cleanUser = username ? username.trim() : "";
+
+    if (!cleanCode) {
+      setError("Por favor introduza o código da sala.");
+      return;
+    }
 
     setLoading(true);
     setError("");
-    const cleanCode = codeToJoin.toUpperCase().trim();
 
     try {
-      const res = await fetch("/api/multiplayer/join", {
+      const res = await fetchWithTimeout("/api/multiplayer/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, roomCode: cleanCode })
-      });
+        body: JSON.stringify({ username: cleanUser, roomCode: cleanCode })
+      }, 8000);
+
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         setRoom(data.room);
         connectToRoomStream(cleanCode);
       } else {
-        setError(data.error || "Código inválido ou sala cheia.");
+        setError(data.error || "Código inválido ou sala indisponível.");
       }
-    } catch (err) {
-      setError("Erro ao tentar aceder à sala.");
+    } catch (err: any) {
+      console.error("Erro ao tentar aceder à sala:", err);
+      if (retryCount < 1) {
+        await new Promise(r => setTimeout(r, 1000));
+        return joinRoomWithCode(cleanCode, retryCount + 1);
+      }
+      if (err.name === "AbortError") {
+        setError("A resposta do servidor expirou ao aceder à sala. Tente novamente.");
+      } else {
+        setError("Erro ao tentar aceder à sala. Verifique a sua ligação ao servidor.");
+      }
     } finally {
       setLoading(false);
     }
