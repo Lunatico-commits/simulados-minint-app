@@ -130,7 +130,7 @@ app.post("/api/auth/login", (req, res) => {
   }
 });
 
-// API: MULTIPLAYER (PERFEITAMENTE ADAPTADO AO TEU TYPES.TS)
+// API: MULTIPLAYER
 app.post("/api/multiplayer/create", async (req, res) => {
   try {
     const { code, hostName, level } = req.body;
@@ -283,6 +283,61 @@ app.post("/api/ranking/submit", (req, res) => {
   res.json({ success: true, rankings });
 });
 
+// API: GERAR PERGUNTAS DINÂMICAS E INÉDITAS COM GEMINI (MONETIZAÇÃO ADSTERRA)
+app.post("/api/questions/generate", async (req, res) => {
+  try {
+    const { materia, nivel, count } = req.body;
+    const ai = getGemini();
+
+    if (!ai) {
+      return res.status(500).json({ success: false, error: "GEMINI_API_KEY não configurada na Vercel." });
+    }
+
+    const numQuestions = count || 10;
+    const prompt = `Gere exatamente ${numQuestions} questões inéditas de escolha múltipla (4 opções por pergunta) para o Concurso Público do Ministério do Interior (MININT) de Angola.
+    Matéria: ${materia || "Cultura Geral e Legislação MININT"}.
+    Nível de escolaridade: ${nivel || "medio"}.
+
+    Regras Importantes:
+    1. Garantir que as questões abordem a realidade angolana (Constituição de Angola, História, Geografia, Leis Orgânicas do MININT, Polícia Nacional, SME, Serviço Penitenciário e Bombeiros).
+    2. A resposta_correta deve ser um número inteiro entre 0 e 3 (o índice da opção certa na array 'opcoes').
+    3. Cada questão deve ter uma explicação clara e pedagógica sobre o porquê de aquela resposta ser a correta.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              materia: { type: Type.STRING },
+              pergunta: { type: Type.STRING },
+              opcoes: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              resposta_correta: { type: Type.INTEGER },
+              explicacao: { type: Type.STRING },
+              nivel: { type: Type.STRING }
+            },
+            required: ["id", "materia", "pergunta", "opcoes", "resposta_correta", "explicacao", "nivel"]
+          }
+        }
+      }
+    });
+
+    const questions = JSON.parse(response.text || "[]");
+    res.json({ success: true, questions });
+  } catch (error: any) {
+    console.error("Erro ao gerar perguntas dinâmicas:", error);
+    res.status(500).json({ success: false, error: "Erro ao gerar perguntas via IA." });
+  }
+});
+
 // API: GEMINI EXPLANATION
 app.post("/api/gemini/explain", async (req, res) => {
   const { questionText, options, correctAnswer, selectedAnswer, explanation, userQuestion } = req.body;
@@ -388,4 +443,3 @@ if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
 }
 
 export default app;
- 
