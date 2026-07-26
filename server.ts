@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import Pusher from "pusher";
 import { GoogleGenAI, Type } from "@google/genai";
 import { Room, Player, ChatMessage, RankingEntry } from "./src/types";
 import { getExamQuestions } from "./src/data/questions";
@@ -8,6 +9,17 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
+// ---------------------------------------------------------
+// CONFIGURAÇÃO DO PUSHER (MULTIPLAYER REALTIME)
+// ---------------------------------------------------------
+const pusher = new Pusher({
+  appId: process.env.PUSHER_APP_ID || "2180210",
+  key: process.env.PUSHER_KEY || "9f8d70a0303400477b30",
+  secret: process.env.PUSHER_SECRET || "2c99321eeba901356c4c7990da9be9e0",
+  cluster: process.env.PUSHER_CLUSTER || "eu",
+  useTLS: true
+});
 
 // In-memory data store for leaderboards
 let rankings: RankingEntry[] = [];
@@ -35,7 +47,6 @@ defaultSeedAccounts.forEach(acc => {
 
 // In-memory data store for multiplayer rooms
 const rooms = new Map<string, Room>();
-const roomClients = new Map<string, Array<{ username: string; res: express.Response }>>();
 
 // Helper Gemini Client
 function getGemini(): GoogleGenAI | null {
@@ -117,6 +128,84 @@ app.post("/api/auth/login", (req, res) => {
     res.json({ success: true, username: account.username });
   } catch (err: any) {
     res.status(500).json({ error: "Erro interno no servidor ao efetuar login." });
+  }
+});
+
+// API: MULTIPLAYER (PUSHER INTEGRADO)
+app.post("/api/multiplayer/create", async (req, res) => {
+  try {
+    const { code, hostName, level } = req.body;
+    const room: Room = {
+      code,
+      hostName,
+      level,
+      players: [{ username: hostName, isReady: true, score: 0 }],
+      status: "waiting",
+      messages: [],
+      createdAt: Date.now()
+    };
+
+    rooms.set(code, room);
+
+    // Dispara a atualização global no canal da sala
+    await pusher.trigger(`room-${code}`, "room-updated", room);
+
+    res.json({ success: true, room });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Erro ao criar sala." });
+  }
+});
+
+app.post("/api/multiplayer/join", async (req, res) => {
+  try {
+    const { code, playerName } = req.body;
+    let room = rooms.get(code);
+
+    if (!room) {
+      room = {
+        code,
+        hostName: "Host",
+        level: "Básico",
+        players: [],
+        status: "waiting",
+        messages: [],
+        createdAt: Date.now()
+      };
+    }
+
+    const exists = room.players.some((p: Player) => p.username.toLowerCase() === playerName.toLowerCase());
+    if (!exists) {
+      room.players.push({ username: playerName, isReady: true, score: 0 });
+    }
+
+    rooms.set(code, room);
+
+    // Notifica instantaneamente o outro celular em tempo real!
+    await pusher.trigger(`room-${code}`, "room-updated", room);
+
+    res.json({ success: true, room });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Erro ao entrar na sala." });
+  }
+});
+
+app.post("/api/multiplayer/message", async (req, res) => {
+  try {
+    const { code, sender, text } = req.body;
+    const room = rooms.get(code);
+    const newMessage: ChatMessage = { id: Date.now().toString(), sender, text, timestamp: Date.now() };
+
+    if (room) {
+      room.messages.push(newMessage);
+      rooms.set(code, room);
+    }
+
+    // Transmite a mensagem do chat para os candidatos
+    await pusher.trigger(`room-${code}`, "new-message", newMessage);
+
+    res.json({ success: true, message: newMessage });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Erro ao enviar mensagem." });
   }
 });
 
@@ -266,4 +355,3 @@ if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
 }
 
 export default app;
- 
