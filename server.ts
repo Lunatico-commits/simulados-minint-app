@@ -1,19 +1,18 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-import { Room, Player, ChatMessage, RankingEntry, Question } from "./src/types";
-import { SAMPLE_QUESTIONS, getExamQuestions } from "./src/data/questions";
+import { Room, Player, ChatMessage, RankingEntry } from "./src/types";
+import { getExamQuestions } from "./src/data/questions";
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// In-memory data store for leaderboards (Real registered accounts only)
+// In-memory data store for leaderboards
 let rankings: RankingEntry[] = [];
 
-// In-memory data store for candidate user accounts (Server-side permanent store)
+// In-memory data store for candidate user accounts
 interface UserAccount {
   username: string;
   usernameLower: string;
@@ -23,7 +22,7 @@ interface UserAccount {
 
 const userAccounts = new Map<string, UserAccount>();
 
-// Seed default accounts so candidates can log in from any device
+// Seed default accounts
 const defaultSeedAccounts: UserAccount[] = [
   { username: "Candidato Manuel", usernameLower: "candidatomanuel", password: "123", createdAt: Date.now() },
   { username: "GangSt", usernameLower: "gangst", password: "123", createdAt: Date.now() }
@@ -36,19 +35,22 @@ defaultSeedAccounts.forEach(acc => {
 
 // In-memory data store for multiplayer rooms
 const rooms = new Map<string, Room>();
-
-// Registry of SSE client connections: roomCode -> array of clients
 const roomClients = new Map<string, Array<{ username: string; res: express.Response }>>();
 
-//
-// API: AUTHENTICATION & CANDIDATE REGISTRATION
-//
+// Helper Gemini Client
+function getGemini(): GoogleGenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.warn("GEMINI_API_KEY is not defined in environment variables.");
+    return null;
+  }
+  return new GoogleGenAI({ apiKey });
+}
 
-// Register a new Candidate Account
+// API: AUTHENTICATION
 app.post("/api/auth/register", (req, res) => {
   try {
     const { username, password, referralCode } = req.body;
-
     const cleanUsername = username ? String(username).trim() : "";
     const cleanPassword = password ? String(password).trim() : "";
     const cleanRef = referralCode ? String(referralCode).trim() : "";
@@ -58,7 +60,7 @@ app.post("/api/auth/register", (req, res) => {
     }
 
     if (cleanUsername.length < 3) {
-      return res.status(400).json({ error: "O Nome/NIP do candidato deve ter pelo menos 3 caracteres." });
+      return res.status(400).json({ error: "O Nome/NIP deve ter pelo menos 3 caracteres." });
     }
 
     if (cleanPassword.length < 4) {
@@ -66,111 +68,66 @@ app.post("/api/auth/register", (req, res) => {
     }
 
     const usernameLower = cleanUsername.toLowerCase();
-
     if (userAccounts.has(usernameLower)) {
-      return res.status(400).json({ error: "Este candidato/NIP já se encontra registado. Por favor efetue login." });
+      return res.status(400).json({ error: "Este candidato/NIP já se encontra registado." });
     }
 
-    const newAccount: UserAccount = {
+    userAccounts.set(usernameLower, {
       username: cleanUsername,
       usernameLower,
       password: cleanPassword,
       createdAt: Date.now()
-    };
+    });
 
-    userAccounts.set(usernameLower, newAccount);
-
-    // Initialize leaderboard entry if not present
     if (!rankings.some(r => r.username.toLowerCase() === usernameLower)) {
-      rankings.push({
-        username: cleanUsername,
-        points: 0,
-        totalExams: 0,
-        accuracy: 0
-      });
+      rankings.push({ username: cleanUsername, points: 0, totalExams: 0, accuracy: 0 });
     }
 
-    // Process Referral Reward if provided
     if (cleanRef) {
       const refIdx = rankings.findIndex(r => r.username.toLowerCase() === cleanRef.toLowerCase());
       if (refIdx !== -1) {
         rankings[refIdx].points += 5;
       } else {
-        rankings.push({
-          username: cleanRef,
-          points: 5,
-          totalExams: 0,
-          accuracy: 0
-        });
+        rankings.push({ username: cleanRef, points: 5, totalExams: 0, accuracy: 0 });
       }
     }
 
     rankings.sort((a, b) => b.points - a.points);
-    console.log(`[AUTH] Nova conta registada: ${cleanUsername}`);
     res.json({ success: true, username: cleanUsername });
   } catch (err: any) {
-    console.error("Register API Error:", err);
     res.status(500).json({ error: "Erro interno no servidor ao criar conta." });
   }
 });
 
-// Login Existing Candidate
 app.post("/api/auth/login", (req, res) => {
   try {
     const { username, password } = req.body;
-
     const cleanUsername = username ? String(username).trim() : "";
     const cleanPassword = password ? String(password).trim() : "";
 
     if (!cleanUsername || !cleanPassword) {
-      return res.status(400).json({ error: "Por favor, preencha o Nome de Candidato/NIP e a Senha." });
+      return res.status(400).json({ error: "Preencha o Nome de Candidato/NIP e a Senha." });
     }
 
-    const usernameLower = cleanUsername.toLowerCase();
-    const account = userAccounts.get(usernameLower);
-
+    const account = userAccounts.get(cleanUsername.toLowerCase());
     if (!account || account.password !== cleanPassword) {
       return res.status(401).json({ error: "Nome de utilizador ou senha incorretos." });
     }
 
-    console.log(`[AUTH] Login com sucesso: ${account.username}`);
     res.json({ success: true, username: account.username });
   } catch (err: any) {
-    console.error("Login API Error:", err);
     res.status(500).json({ error: "Erro interno no servidor ao efetuar login." });
   }
 });
 
-// Lazy initialization of the @google/genai client
-let aiClient: GoogleGenAI | null = null;
-
-function getGemini(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY environment variable is required but missing.");
-    }
-    aiClient = new GoogleGenAI({
-      apiKey
-    });
-  }
-  return aiClient;
-}
-
-//
-// API: RANKING / LEADERBOARD ENDPOINTS
-//
-
+// API: RANKING
 app.get("/api/ranking/list", (req, res) => {
   res.json(rankings.sort((a, b) => b.points - a.points));
 });
 
 app.post("/api/ranking/submit", (req, res) => {
   const { username, score, total, pointsGained, currentTotalPoints } = req.body;
-
-  if (!username) {
-    return res.status(400).json({ error: "Username is required" });
-  }
+  if (!username) return res.status(400).json({ error: "Username is required" });
 
   const existingIdx = rankings.findIndex(r => r.username.toLowerCase() === username.toLowerCase());
   const accuracy = total > 0 ? Math.round((score / total) * 100) : 0;
@@ -191,10 +148,9 @@ app.post("/api/ranking/submit", (req, res) => {
         : accuracy;
     }
   } else {
-    const initialPoints = typeof currentTotalPoints === "number" ? currentTotalPoints : (pointsGained || 0);
     rankings.push({
       username,
-      points: initialPoints,
+      points: typeof currentTotalPoints === "number" ? currentTotalPoints : (pointsGained || 0),
       totalExams: isNewExam ? 1 : 0,
       accuracy: isNewExam ? accuracy : 0
     });
@@ -205,468 +161,64 @@ app.post("/api/ranking/submit", (req, res) => {
   res.json({ success: true, rankings });
 });
 
-app.post("/api/invite/reward", (req, res) => {
-  const { referrer } = req.body;
-
-  if (!referrer || typeof referrer !== "string") {
-    return res.status(400).json({ error: "Nome do utilizador recomendador é obrigatório" });
-  }
-
-  const cleanName = referrer.trim();
-  if (!cleanName) {
-    return res.status(400).json({ error: "Nome inválido" });
-  }
-
-  const existingIdx = rankings.findIndex(r => r.username.toLowerCase() === cleanName.toLowerCase());
-
-  if (existingIdx !== -1) {
-    rankings[existingIdx].points += 5;
-  } else {
-    rankings.push({
-      username: cleanName,
-      points: 5,
-      totalExams: 0,
-      accuracy: 0
-    });
-  }
-
-  rankings.sort((a, b) => b.points - a.points);
-  res.json({ success: true, pointsAdded: 5, rankings });
-});
-
-//
-// API: REAL-TIME MULTIPLAYER ENDPOINTS (SSE)
-//
-
-function generateRoomCode(): string {
-  const chars = "ABCDEFGHIJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  if (rooms.has(code)) return generateRoomCode();
-  return code;
-}
-
-function broadcastRoomState(roomCode: string) {
-  const room = rooms.get(roomCode);
-  if (!room) return;
-  const clients = roomClients.get(roomCode) || [];
-  const payload = JSON.stringify({ type: "room_update", room });
-
-  clients.forEach(client => {
-    try {
-      client.res.write(`data: ${payload}\n\n`);
-    } catch (err) {
-      console.error(`Failed writing to SSE stream for user ${client.username}:`, err);
-    }
-  });
-}
-
-app.post("/api/multiplayer/create", (req, res) => {
-  try {
-    const { username, nivel } = req.body;
-    const cleanUsername = username ? String(username).trim() : "";
-
-    if (!cleanUsername) {
-      return res.status(400).json({ error: "O nome do candidato é obrigatório para criar a sala." });
-    }
-
-    const selectedLevel = nivel || "basico";
-    const code = generateRoomCode();
-
-    const hostPlayer: Player = {
-      username: cleanUsername,
-      isReady: true,
-      score: 0,
-      progress: 0,
-      isHost: true,
-      answers: {}
-    };
-
-    const selectedQuestions = getExamQuestions(null, selectedLevel);
-
-    const newRoom: Room = {
-      code,
-      players: [hostPlayer],
-      messages: [
-        {
-          id: `sys_${Date.now()}`,
-          username: "Sistema",
-          text: `Sala privada ${code} criada por ${cleanUsername}. Nível do exame: ${selectedLevel}`,
-          timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-        }
-      ],
-      status: "lobby",
-      questions: selectedQuestions,
-      currentQuestionIndex: 0,
-      createdAt: Date.now(),
-      nivel: selectedLevel
-    };
-
-    rooms.set(code, newRoom);
-    console.log(`[MULTIPLAYER] Sala privada criada: #${code} por ${cleanUsername}`);
-    res.json({ success: true, roomCode: code, room: newRoom });
-  } catch (err: any) {
-    console.error("Error creating room:", err);
-    res.status(500).json({ error: "Erro interno no servidor ao criar a sala privada." });
-  }
-});
-
-app.post("/api/multiplayer/join", (req, res) => {
-  try {
-    const { username, roomCode } = req.body;
-    const cleanUsername = username ? String(username).trim() : "";
-
-    if (!cleanUsername || !roomCode) {
-      return res.status(400).json({ error: "Nome de candidato e código da sala são obrigatórios." });
-    }
-
-    const cleanCode = String(roomCode).toUpperCase().trim();
-    const room = rooms.get(cleanCode);
-
-    if (!room) {
-      return res.status(404).json({ error: "Sala não encontrada. Verifique o código inserido." });
-    }
-
-    if (room.status !== "lobby") {
-      return res.status(400).json({ error: "A simulação nesta sala já iniciou." });
-    }
-
-    const alreadyJoined = room.players.some(p => p.username.toLowerCase() === cleanUsername.toLowerCase());
-    if (alreadyJoined) {
-      return res.json({ success: true, roomCode: cleanCode, room });
-    }
-
-    if (room.players.length >= 2) {
-      return res.status(400).json({ error: "Esta sala já está cheia (limite de 2 participantes para duelo)." });
-    }
-
-    const newPlayer: Player = {
-      username: cleanUsername,
-      isReady: true,
-      score: 0,
-      progress: 0,
-      isHost: false,
-      answers: {}
-    };
-
-    room.players.push(newPlayer);
-
-    if (room.players.length === 2) {
-      room.players.forEach(p => p.isReady = true);
-      room.messages.push({
-        id: `sys_${Date.now()}`,
-        username: "Sistema",
-        text: `Duelo 1 vs 1 completo! ${cleanUsername} entrou. A sala foi fechada e o simulado está a começar!`,
-        timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-      });
-      room.status = "playing";
-    } else {
-      room.messages.push({
-        id: `sys_${Date.now()}`,
-        username: "Sistema",
-        text: `O candidato ${cleanUsername} juntou-se à sala de preparação.`,
-        timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-      });
-    }
-
-    rooms.set(cleanCode, room);
-    broadcastRoomState(cleanCode);
-    res.json({ success: true, roomCode: cleanCode, room });
-  } catch (err: any) {
-    console.error("Error joining room:", err);
-    res.status(500).json({ error: "Erro interno no servidor ao aceder à sala." });
-  }
-});
-
-app.post("/api/multiplayer/ready", (req, res) => {
-  const { username, roomCode, isReady } = req.body;
-  if (!username || !roomCode) {
-    return res.status(400).json({ error: "Username and roomCode are required" });
-  }
-
-  const cleanCode = roomCode.toUpperCase().trim();
-  const room = rooms.get(cleanCode);
-  if (!room) return res.status(404).json({ error: "Room not found" });
-
-  const player = room.players.find(p => p.username === username);
-  if (player) {
-    player.isReady = isReady;
-    broadcastRoomState(cleanCode);
-    res.json({ success: true });
-  } else {
-    res.status(404).json({ error: "Player not found" });
-  }
-});
-
-app.post("/api/multiplayer/start", (req, res) => {
-  const { username, roomCode } = req.body;
-  if (!username || !roomCode) {
-    return res.status(400).json({ error: "Username and roomCode are required" });
-  }
-
-  const cleanCode = roomCode.toUpperCase().trim();
-  const room = rooms.get(cleanCode);
-  if (!room) return res.status(404).json({ error: "Room not found" });
-
-  const player = room.players.find(p => p.username === username);
-  if (!player || !player.isHost) {
-    return res.status(403).json({ error: "Apenas o criador da sala pode iniciar o exame." });
-  }
-
-  room.status = "playing";
-  room.messages.push({
-    id: `sys_${Date.now()}`,
-    username: "Sistema",
-    text: "O exame começou! Boa sorte a todos os candidatos do MININT.",
-    timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-  });
-
-  rooms.set(cleanCode, room);
-  broadcastRoomState(cleanCode);
-  res.json({ success: true });
-});
-
-app.post("/api/multiplayer/answer", (req, res) => {
-  const { username, roomCode, questionIndex, isCorrect } = req.body;
-  if (!username || !roomCode || questionIndex === undefined) {
-    return res.status(400).json({ error: "Missing parameters" });
-  }
-
-  const cleanCode = roomCode.toUpperCase().trim();
-  const room = rooms.get(cleanCode);
-  if (!room) return res.status(404).json({ error: "Room not found" });
-
-  const player = room.players.find(p => p.username === username);
-  if (!player) return res.status(404).json({ error: "Player not found" });
-
-  if (player.answers[questionIndex] === undefined) {
-    player.answers[questionIndex] = isCorrect;
-    player.progress += 1;
-    if (isCorrect) {
-      player.score += 1;
-    }
-  }
-
-  const allFinished = room.players.every(p => p.progress >= room.questions.length);
-  if (allFinished) {
-    room.status = "finished";
-    room.messages.push({
-      id: `sys_${Date.now()}`,
-      username: "Sistema",
-      text: "Simulação concluída! Veja o pódio final e compare as notas.",
-      timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-    });
-
-    room.players.forEach(p => {
-      const pointsGained = p.score * 50;
-      const existingIdx = rankings.findIndex(r => r.username.toLowerCase() === p.username.toLowerCase());
-      const accuracy = Math.round((p.score / room.questions.length) * 100);
-
-      if (existingIdx !== -1) {
-        rankings[existingIdx].points += pointsGained;
-        rankings[existingIdx].totalExams += 1;
-        const oldTotal = rankings[existingIdx].totalExams - 1;
-        rankings[existingIdx].accuracy = Math.round(
-          ((rankings[existingIdx].accuracy * oldTotal) + accuracy) / rankings[existingIdx].totalExams
-        );
-      } else {
-        rankings.push({
-          username: p.username,
-          points: pointsGained,
-          totalExams: 1,
-          accuracy
-        });
-      }
-    });
-
-    rankings.sort((a, b) => b.points - a.points);
-  }
-
-  rooms.set(cleanCode, room);
-  broadcastRoomState(cleanCode);
-  res.json({ success: true, room });
-});
-
-app.post("/api/multiplayer/chat", (req, res) => {
-  const { username, roomCode, text } = req.body;
-  if (!username || !roomCode || !text) {
-    return res.status(400).json({ error: "Missing parameters" });
-  }
-
-  const cleanCode = roomCode.toUpperCase().trim();
-  const room = rooms.get(cleanCode);
-  if (!room) return res.status(404).json({ error: "Room not found" });
-
-  const newMessage: ChatMessage = {
-    id: `msg_${Date.now()}`,
-    username,
-    text,
-    timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-  };
-
-  room.messages.push(newMessage);
-  if (room.messages.length > 50) {
-    room.messages.shift();
-  }
-
-  rooms.set(cleanCode, room);
-  broadcastRoomState(cleanCode);
-  res.json({ success: true });
-});
-
-app.get("/api/multiplayer/stream", (req, res) => {
-  const { roomCode, username } = req.query;
-  if (!roomCode || !username) {
-    return res.status(400).send("roomCode and username are required");
-  }
-
-  const cleanCode = (roomCode as string).toUpperCase().trim();
-  const name = username as string;
-  const room = rooms.get(cleanCode);
-
-  if (!room) {
-    return res.status(404).send("Room not found");
-  }
-
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  const keepAliveInterval = setInterval(() => {
-    res.write(": keepalive\n\n");
-  }, 20000);
-
-  if (!roomClients.has(cleanCode)) {
-    roomClients.set(cleanCode, []);
-  }
-  roomClients.get(cleanCode)!.push({ username: name, res });
-
-  res.write(`data: ${JSON.stringify({ type: "room_update", room })}\n\n`);
-
-  req.on("close", () => {
-    clearInterval(keepAliveInterval);
-    const activeClients = roomClients.get(cleanCode) || [];
-    const filteredClients = activeClients.filter(c => c.res !== res);
-    roomClients.set(cleanCode, filteredClients);
-
-    const currentRoom = rooms.get(cleanCode);
-    if (currentRoom) {
-      if (currentRoom.status === "lobby") {
-        currentRoom.players = currentRoom.players.filter(p => p.username !== name);
-        currentRoom.messages.push({
-          id: `sys_exit_${Date.now()}`,
-          username: "Sistema",
-          text: `O candidato ${name} saiu da sala.`,
-          timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-        });
-
-        const wasHost = currentRoom.players.length > 0 && !currentRoom.players.some(p => p.isHost);
-        if (wasHost && currentRoom.players.length > 0) {
-          currentRoom.players[0].isHost = true;
-          currentRoom.players[0].isReady = true;
-          currentRoom.messages.push({
-            id: `sys_host_${Date.now()}`,
-            username: "Sistema",
-            text: `O candidato ${currentRoom.players[0].username} é agora o anfitrião da sala.`,
-            timestamp: new Date().toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })
-          });
-        }
-
-        if (currentRoom.players.length === 0) {
-          rooms.delete(cleanCode);
-          roomClients.delete(cleanCode);
-          return;
-        }
-
-        rooms.set(cleanCode, currentRoom);
-        broadcastRoomState(cleanCode);
-      }
-    }
-  });
-});
-
-//
-// API: GEMINI ASSISTANT FOR EXAM EXPLANATIONS
-//
-
+// API: GEMINI EXPLANATION
 app.post("/api/gemini/explain", async (req, res) => {
   const { questionText, options, correctAnswer, selectedAnswer, explanation, userQuestion } = req.body;
 
   try {
     const ai = getGemini();
+    if (!ai) {
+      return res.json({
+        success: true,
+        explanation: `**Tutor MININT:**\n\n${explanation}\n\n*(Nota: Adicione a GEMINI_API_KEY nas variáveis de ambiente da Vercel para ativar as respostas personalizadas da IA)*`
+      });
+    }
 
     const prompt = `
-Você é o "Tutor Inteligente MININT", um assistente de inteligência artificial altamente qualificado para preparar candidatos para o Concurso Público do Ministério do Interior de Angola (MININT).
-Por favor, ajude o candidato respondendo com clareza técnica e encorajamento profissional em português de Angola.
+Você é o "Tutor Inteligente MININT", assistente para o Concurso do Ministério do Interior de Angola.
+Aperfeiçoe a explicação para o candidato.
 
-CONTEXTO DA QUESTÃO
-Matéria: Legislação e conhecimentos gerais do MININT / Angola.
-Pergunta: "${questionText}"
-Opções disponíveis: ${JSON.stringify(options)}
-Índice da resposta correta: ${correctAnswer} (Opção correta: "${options ? options[correctAnswer] : ''}")
-Índice respondido pelo usuário: ${selectedAnswer} (Opção selecionada: "${selectedAnswer !== null && options ? options[selectedAnswer] : 'Nenhuma'}")
-Explicação padrão rápida: "${explanation}"
-
-Dúvida específica do candidato: "${userQuestion || 'Por favor, dê uma explicação aprofundada desta questão.'}"
-
-Responda de forma pedagógica, destacando referências de artigos se aplicável (como os artigos da Constituição da República de Angola - CRA ou regulamentos da PNA/SIC/SME/SPCB).
+Questão: "${questionText}"
+Opções: ${JSON.stringify(options)}
+Opção correta: "${options ? options[correctAnswer] : ''}"
+Resposta do candidato: "${selectedAnswer !== null && options ? options[selectedAnswer] : 'Nenhuma'}"
+Explicação padrão: "${explanation}"
+Dúvida do candidato: "${userQuestion || 'Explique detalhadamente.'}"
 `;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
-        systemInstruction: "Você é o Tutor Inteligente do Concurso MININT. Responde com clareza legislativa e pedagogia.",
+        systemInstruction: "Você é o Tutor Inteligente do Concurso MININT.",
         temperature: 0.7,
       },
     });
 
     res.json({ success: true, explanation: response.text });
   } catch (error: any) {
-    console.error("Gemini Explanation Error:", error?.message || error);
+    console.error("Gemini Error:", error);
     res.json({
       success: true,
-      explanation: `**Tutor Inteligente MININT (Modo Local):**\n\n${explanation}\n\n*Nota: O servidor de IA remoto respondeu via fallback local.*`
+      explanation: `**Tutor MININT:**\n\n${explanation}`
     });
   }
 });
 
-//
-// API: GEMINI DICA DO DIA (TIP OF THE DAY)
-//
-
-const FALLBACK_TIPS = [
-  {
+// API: GEMINI DICA DO DIA
+app.get("/api/gemini/dica-do-dia", async (req, res) => {
+  const fallbackTip = {
     titulo: "Divisão Político-Administrativa de Angola",
     categoria: "Cultura Geral / Geografia",
     conteudo: "Com a nova Lei da Divisão Político-Administrativa, Angola conta com 21 Províncias.",
     fonte: "Lei n.º 14/24 de Divisão Político-Administrativa"
-  },
-  {
-    titulo: "Insubordinação e Hierarquia Policial",
-    categoria: "Legislação e Segurança Interna",
-    conteudo: "Nos termos dos regulamentos da PNA, a hierarquia e a disciplina policial são pilares inegociáveis.",
-    fonte: "Regulamento Disciplinar da PNA"
-  },
-  {
-    titulo: "Papel Constitucional da PNA",
-    categoria: "Organização do Estado",
-    conteudo: "O Artigo 211.º da Constituição da República de Angola (CRA) estabelece a Polícia Nacional como força policial permanente.",
-    fonte: "Artigo 211.º da CRA"
-  }
-];
+  };
 
-app.get("/api/gemini/dica-do-dia", async (req, res) => {
   try {
     const ai = getGemini();
+    if (!ai) return res.json({ success: true, tip: fallbackTip, fallback: true });
 
-    const prompt = `
-Gere uma "Dica de Ouro do Dia" altamente relevante e sucinta para um candidato a estudar para o concurso do MININT Angola.
-A dica pode ser sobre legislação (CRA), história/geografia de Angola ou regras de Língua Portuguesa.
-Retorne estritamente um objeto JSON no formato requerido.
-`;
+    const prompt = `Gere uma "Dica de Ouro do Dia" para o concurso MININT Angola em formato JSON.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -683,43 +235,35 @@ Retorne estritamente um objeto JSON no formato requerido.
           },
           required: ["titulo", "categoria", "conteudo", "fonte"],
         },
-        temperature: 0.9,
       },
     });
 
     const parsed = JSON.parse(response.text || "{}");
     res.json({ success: true, tip: parsed });
-  } catch (error: any) {
-    console.log("Gemini Dica do Dia: Usando dica oficial do acervo MININT.");
-    const randomFallback = FALLBACK_TIPS[Math.floor(Math.random() * FALLBACK_TIPS.length)];
-    res.json({ success: true, tip: randomFallback, fallback: true });
+  } catch (error) {
+    res.json({ success: true, tip: fallbackTip, fallback: true });
   }
 });
 
-//
-// VITE DEV SERVER AND ASSETS PIPELINE
-//
+// Serve Static Frontend files in Production
+const distPath = path.join(process.cwd(), "dist");
+app.use(express.static(distPath));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
 
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+// Dynamic Vite Loader only for local development
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  import("vite").then(({ createServer: createViteServer }) => {
+    createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
+    }).then(vite => {
+      app.use(vite.middlewares);
+      app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
     });
-    app.use(vite.middlewares);
-
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`[MININT Simulados] Server running on http://localhost:${PORT}`);
-    });
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
+  });
 }
 
-startServer();
-
 export default app;
+ 
