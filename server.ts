@@ -3,7 +3,6 @@ import path from "path";
 import Pusher from "pusher";
 import { GoogleGenAI, Type } from "@google/genai";
 import { Room, Player, ChatMessage, RankingEntry } from "./src/types";
-import { getExamQuestions } from "./src/data/questions";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -21,10 +20,9 @@ const pusher = new Pusher({
   useTLS: true
 });
 
-// In-memory data store for leaderboards
+// Guardar rankings e contas em memória
 let rankings: RankingEntry[] = [];
 
-// In-memory data store for candidate user accounts
 interface UserAccount {
   username: string;
   usernameLower: string;
@@ -34,7 +32,7 @@ interface UserAccount {
 
 const userAccounts = new Map<string, UserAccount>();
 
-// Seed default accounts
+// Contas padrão
 const defaultSeedAccounts: UserAccount[] = [
   { username: "Candidato Manuel", usernameLower: "candidatomanuel", password: "123", createdAt: Date.now() },
   { username: "GangSt", usernameLower: "gangst", password: "123", createdAt: Date.now() }
@@ -45,10 +43,10 @@ defaultSeedAccounts.forEach(acc => {
   rankings.push({ username: acc.username, points: 50, totalExams: 1, accuracy: 85 });
 });
 
-// In-memory data store for multiplayer rooms
+// Guardar salas de multiplayer
 const rooms = new Map<string, Room>();
 
-// Helper Gemini Client
+// Função auxiliar Gemini Client
 function getGemini(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -131,23 +129,33 @@ app.post("/api/auth/login", (req, res) => {
   }
 });
 
-// API: MULTIPLAYER (PUSHER INTEGRADO)
+// API: MULTIPLAYER (CORRIGIDO PARA O SEU SRC/TYPES.TS)
 app.post("/api/multiplayer/create", async (req, res) => {
   try {
     const { code, hostName, level } = req.body;
+
+    const hostPlayer: Player = {
+      username: hostName,
+      isHost: true,
+      isReady: true,
+      score: 0,
+      progress: 0,
+      answers: {}
+    };
+
     const room: Room = {
       code,
       hostName,
-      level,
-      players: [{ username: hostName, isReady: true, score: 0 }],
-      status: "waiting",
+      level: level || "Básico",
+      status: "lobby",
+      players: [hostPlayer],
       messages: [],
       createdAt: Date.now()
     };
 
     rooms.set(code, room);
 
-    // Dispara a atualização global no canal da sala
+    // Notifica em tempo real via Pusher
     await pusher.trigger(`room-${code}`, "room-updated", room);
 
     res.json({ success: true, room });
@@ -162,25 +170,42 @@ app.post("/api/multiplayer/join", async (req, res) => {
     let room = rooms.get(code);
 
     if (!room) {
+      const defaultHost: Player = {
+        username: "Anfitrião",
+        isHost: true,
+        isReady: true,
+        score: 0,
+        progress: 0,
+        answers: {}
+      };
+
       room = {
         code,
-        hostName: "Host",
+        hostName: "Anfitrião",
         level: "Básico",
-        players: [],
-        status: "waiting",
+        status: "lobby",
+        players: [defaultHost],
         messages: [],
         createdAt: Date.now()
       };
     }
 
-    const exists = room.players.some((p: Player) => p.username.toLowerCase() === playerName.toLowerCase());
+    const exists = room.players.some((p: Player) => p.username.toLowerCase() === String(playerName).toLowerCase());
     if (!exists) {
-      room.players.push({ username: playerName, isReady: true, score: 0 });
+      const newPlayer: Player = {
+        username: playerName,
+        isHost: false,
+        isReady: true,
+        score: 0,
+        progress: 0,
+        answers: {}
+      };
+      room.players.push(newPlayer);
     }
 
     rooms.set(code, room);
 
-    // Notifica instantaneamente o outro celular em tempo real!
+    // Sincroniza os telemóveis em tempo real
     await pusher.trigger(`room-${code}`, "room-updated", room);
 
     res.json({ success: true, room });
@@ -200,7 +225,6 @@ app.post("/api/multiplayer/message", async (req, res) => {
       rooms.set(code, room);
     }
 
-    // Transmite a mensagem do chat para os candidatos
     await pusher.trigger(`room-${code}`, "new-message", newMessage);
 
     res.json({ success: true, message: newMessage });
@@ -334,14 +358,14 @@ app.get("/api/gemini/dica-do-dia", async (req, res) => {
   }
 });
 
-// Serve Static Frontend files in Production
+// Ficheiros estáticos em Produção
 const distPath = path.join(process.cwd(), "dist");
 app.use(express.static(distPath));
 app.get("*", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
-// Dynamic Vite Loader only for local development
+// Loader dinâmico do Vite (Apenas desenvolvimento local)
 if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
   import("vite").then(({ createServer: createViteServer }) => {
     createViteServer({
