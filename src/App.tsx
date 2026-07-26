@@ -15,6 +15,7 @@ import { useTheme } from "./hooks/useTheme";
 import { DEFAULT_AVATAR_ID } from "./data/avatars";
 import { saveAccountToDevice } from "./data/accountManager";
 import { motion, AnimatePresence } from "motion/react";
+import { WifiOff, RefreshCw } from "lucide-react";
 
 const DEFAULT_STATS: UserStats = {
   totalExams: 0,
@@ -27,6 +28,24 @@ const DEFAULT_STATS: UserStats = {
 
 export default function App() {
   const { themeMode, resolvedTheme, changeThemeMode } = useTheme();
+
+  // Estado global de conexão de Internet para forçar monetização/anúncios e consumo de dados
+  const [isOnline, setIsOnline] = useState<boolean>(() => 
+    typeof navigator !== "undefined" && typeof navigator.onLine === "boolean" ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   const [user, setUser] = useState<UserState>({
     username: "",
@@ -52,7 +71,7 @@ export default function App() {
   const [rankNotice, setRankNotice] = useState<RankChangeNotice | null>(null);
 
   const checkUserRank = async (username: string) => {
-    if (!username) return;
+    if (!username || !isOnline) return;
     try {
       const res = await fetch("/api/ranking/list");
       if (!res.ok) return;
@@ -92,7 +111,7 @@ export default function App() {
 
   // Periodic ranking check for active session
   useEffect(() => {
-    if (!user.isLoggedIn || !user.username) return;
+    if (!user.isLoggedIn || !user.username || !isOnline) return;
 
     checkUserRank(user.username);
 
@@ -101,7 +120,7 @@ export default function App() {
     }, 25000);
 
     return () => clearInterval(interval);
-  }, [user.isLoggedIn, user.username]);
+  }, [user.isLoggedIn, user.username, isOnline]);
 
   // Load user session and check referral code on mount
   useEffect(() => {
@@ -155,21 +174,23 @@ export default function App() {
       }
 
       // Sync active session user to real server rankings
-      fetch("/api/ranking/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          score: stats.correctAnswers,
-          total: stats.totalAnswers,
-          pointsGained: 0,
-          currentTotalPoints: stats.points
+      if (navigator.onLine) {
+        fetch("/api/ranking/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username,
+            score: stats.correctAnswers,
+            total: stats.totalAnswers,
+            pointsGained: 0,
+            currentTotalPoints: stats.points
+          })
         })
-      })
-        .then(() => checkUserRank(username))
-        .catch(() => {
-          // Quiet catch for network/disconnect resilience
-        });
+          .then(() => checkUserRank(username))
+          .catch(() => {
+            // Quiet catch for network/disconnect resilience
+          });
+      }
     }
   }, []);
 
@@ -210,21 +231,23 @@ export default function App() {
     saveAccountToDevice(username);
 
     // Proactively submit score to sync this player on server rankings
-    fetch("/api/ranking/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username,
-        score: stats.correctAnswers,
-        total: stats.totalAnswers,
-        pointsGained: 0,
-        currentTotalPoints: stats.points
+    if (navigator.onLine) {
+      fetch("/api/ranking/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          score: stats.correctAnswers,
+          total: stats.totalAnswers,
+          pointsGained: 0,
+          currentTotalPoints: stats.points
+        })
       })
-    })
-      .then(() => checkUserRank(username))
-      .catch(() => {
-        // Quiet catch for network/disconnect resilience
-      });
+        .then(() => checkUserRank(username))
+        .catch(() => {
+          // Quiet catch for network/disconnect resilience
+        });
+    }
   };
 
   const performLogout = () => {
@@ -382,6 +405,39 @@ export default function App() {
     setShowExitConfirm(false);
     setPendingView(null);
   };
+
+  // Ecrã Bloqueador quando estiver Sem Internet (Força a ligação para exibir anúncios e carregar dados)
+  if (!isOnline) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="bg-sleek-card border border-red-500/30 rounded-3xl p-8 max-w-md space-y-5 shadow-2xl relative overflow-hidden">
+          <div className="w-16 h-16 bg-red-950/60 border border-red-500/40 rounded-2xl flex items-center justify-center mx-auto text-red-400 shadow-lg shadow-red-950/50">
+            <WifiOff className="w-8 h-8" />
+          </div>
+          
+          <div className="space-y-2">
+            <h3 className="text-base font-extrabold text-white uppercase tracking-wider">Sem Ligação à Internet</h3>
+            <p className="text-xs text-slate-400 leading-relaxed font-medium">
+              Para aceder à plataforma <strong className="text-slate-200">Simulados MININT</strong> e realizar os exames atualizados, é necessário ter uma ligação ativa à internet (Dados Móveis ou Wi-Fi).
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              if (typeof navigator !== "undefined" && navigator.onLine) {
+                setIsOnline(true);
+              } else {
+                window.location.reload();
+              }
+            }}
+            className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" /> Verificar Ligação
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Render current view
   const renderView = () => {
