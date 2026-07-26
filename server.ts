@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import Pusher from "pusher";
 import { GoogleGenAI, Type } from "@google/genai";
-import { Room, Player, ChatMessage, RankingEntry } from "./src/types";
+import { Room, Player, ChatMessage, RankingEntry, Level } from "./src/types";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -20,9 +20,10 @@ const pusher = new Pusher({
   useTLS: true
 });
 
-// Guardar rankings e contas em memória
+// Guardar rankings em memória
 let rankings: RankingEntry[] = [];
 
+// Guardar contas de utilizador em memória
 interface UserAccount {
   username: string;
   usernameLower: string;
@@ -129,7 +130,7 @@ app.post("/api/auth/login", (req, res) => {
   }
 });
 
-// API: MULTIPLAYER (CORRIGIDO PARA O SEU SRC/TYPES.TS)
+// API: MULTIPLAYER (PERFEITAMENTE ADAPTADO AO TEU TYPES.TS)
 app.post("/api/multiplayer/create", async (req, res) => {
   try {
     const { code, hostName, level } = req.body;
@@ -145,17 +146,18 @@ app.post("/api/multiplayer/create", async (req, res) => {
 
     const room: Room = {
       code,
-      hostName,
-      level: level || "Básico",
-      status: "lobby",
       players: [hostPlayer],
       messages: [],
-      createdAt: Date.now()
+      status: "lobby",
+      questions: [],
+      currentQuestionIndex: 0,
+      createdAt: Date.now(),
+      nivel: (level as Level) || "basico"
     };
 
     rooms.set(code, room);
 
-    // Notifica em tempo real via Pusher
+    // Dispara sinal para o Pusher
     await pusher.trigger(`room-${code}`, "room-updated", room);
 
     res.json({ success: true, room });
@@ -170,7 +172,7 @@ app.post("/api/multiplayer/join", async (req, res) => {
     let room = rooms.get(code);
 
     if (!room) {
-      const defaultHost: Player = {
+      const hostPlayer: Player = {
         username: "Anfitrião",
         isHost: true,
         isReady: true,
@@ -181,12 +183,13 @@ app.post("/api/multiplayer/join", async (req, res) => {
 
       room = {
         code,
-        hostName: "Anfitrião",
-        level: "Básico",
-        status: "lobby",
-        players: [defaultHost],
+        players: [hostPlayer],
         messages: [],
-        createdAt: Date.now()
+        status: "lobby",
+        questions: [],
+        currentQuestionIndex: 0,
+        createdAt: Date.now(),
+        nivel: "basico"
       };
     }
 
@@ -205,7 +208,7 @@ app.post("/api/multiplayer/join", async (req, res) => {
 
     rooms.set(code, room);
 
-    // Sincroniza os telemóveis em tempo real
+    // Dispara atualização em tempo real
     await pusher.trigger(`room-${code}`, "room-updated", room);
 
     res.json({ success: true, room });
@@ -218,7 +221,13 @@ app.post("/api/multiplayer/message", async (req, res) => {
   try {
     const { code, sender, text } = req.body;
     const room = rooms.get(code);
-    const newMessage: ChatMessage = { id: Date.now().toString(), sender, text, timestamp: Date.now() };
+
+    const newMessage: ChatMessage = {
+      id: Date.now().toString(),
+      username: sender,
+      text,
+      timestamp: new Date().toLocaleTimeString()
+    };
 
     if (room) {
       room.messages.push(newMessage);
@@ -379,3 +388,4 @@ if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
 }
 
 export default app;
+ 
