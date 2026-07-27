@@ -45,9 +45,9 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
   // Celebrate victory or 100% score when multiplayer ends
   useEffect(() => {
     if (room?.status === "finished") {
-      const myPlayer = room.players.find(p => p.username === username);
+      const myPlayer = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
       const isWinner = room.players.length > 0 && 
-        [...room.players].sort((a, b) => b.score - a.score)[0]?.username === username;
+        [...room.players].sort((a, b) => b.score - a.score)[0]?.username.toLowerCase() === username.toLowerCase();
       const isPerfectScore = myPlayer && room.questions.length > 0 && myPlayer.score === room.questions.length;
 
       if (isWinner || isPerfectScore) {
@@ -216,7 +216,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
         setRoom(data.room);
         connectToRoomStream(cleanCode);
       } else {
-        // Server returned specific error (e.g., room full, invalid code, simulation already started)
         setError(data.error || "Código inválido ou sala indisponível.");
       }
     } catch (err: any) {
@@ -260,13 +259,11 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     }
   }, [initialRoomCode]);
 
-  // Form submit handler for Join Room button
   const handleJoinRoom = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     joinRoomWithCode(roomCodeInput);
   };
 
-  // Leave room manually
   const handleLeaveRoom = () => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -278,28 +275,31 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     setIsAnswered(false);
   };
 
-  // Mark Ready state
+  // Toggle Ready State for any Player
   const handleToggleReady = async () => {
     if (!room) return;
-    const self = room.players.find(p => p.username === username);
-    if (!self) return;
 
     setRoom(prev => {
       if (!prev) return null;
-      const updatedPlayers = prev.players.map(p => p.username === username ? { ...p, isReady: !p.isReady } : p);
+      const updatedPlayers = prev.players.map(p => 
+        p.username.toLowerCase() === username.toLowerCase() 
+          ? { ...p, isReady: !p.isReady } 
+          : p
+      );
       const updated = { ...prev, players: updatedPlayers };
       localStorage.setItem(`minint_local_room_${prev.code}`, JSON.stringify(updated));
       return updated;
     });
 
     try {
+      const self = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
       await fetch("/api/multiplayer/ready", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username,
           roomCode: room.code,
-          isReady: !self.isReady
+          isReady: !self?.isReady
         })
       });
     } catch (err) {
@@ -333,7 +333,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     }
   };
 
-  // Submit Answer inside Multi Exam
   const handleSubmitAnswer = async () => {
     if (!room || selectedOption === null || isAnswered) return;
 
@@ -344,7 +343,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
 
     setRoom(prev => {
       if (!prev) return null;
-      const updatedPlayers = prev.players.map(p => p.username === username ? { ...p, score: isCorrect ? p.score + 1 : p.score } : p);
+      const updatedPlayers = prev.players.map(p => p.username.toLowerCase() === username.toLowerCase() ? { ...p, score: isCorrect ? p.score + 1 : p.score } : p);
       const isFinished = currentQuestionIdx >= prev.questions.length - 1;
       const updated = {
         ...prev,
@@ -377,7 +376,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     setCurrentQuestionIdx(prev => prev + 1);
   };
 
-  // Send Chat Message
   const handleSendChat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !room) return;
@@ -414,7 +412,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     }
   };
 
-  // Copy Direct Room Code Helper
   const [copied, setCopied] = useState(false);
   const handleCopyCode = () => {
     if (!room) return;
@@ -536,7 +533,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
           </motion.div>
         </div>
 
-        {/* Card: WhatsApp Community Banner */}
+        {/* WhatsApp Community Banner */}
         <motion.div
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -576,14 +573,16 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     );
   }
 
-  const selfPlayer = room.players.find(p => p.username === username);
+  const selfPlayer = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
   const isHost = selfPlayer?.isHost || false;
 
   // ----------------------------------------------------
   // VIEW: ROOM LOBBY STATE
   // ----------------------------------------------------
   if (room.status === "lobby") {
-    const allPlayersReady = room.players.every(p => p.isReady);
+    const hasMinPlayers = room.players.length >= 2;
+    const allPlayersReady = room.players.length > 0 && room.players.every(p => p.isReady);
+    const canStartExam = isHost && hasMinPlayers && allPlayersReady;
 
     return (
       <div className="max-w-6xl mx-auto px-4 py-6 md:py-8 font-sans text-slate-200">
@@ -599,7 +598,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                   <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Sala de Concurso Criada</span>
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-bold text-slate-100 font-display">Candidatos Registados</h3>
-                    <span className="text-xs text-sleek-accent bg-sleek-card-sec border border-slate-800 px-2 py-0.5 rounded-full">
+                    <span className="text-xs text-sleek-accent bg-sleek-card-sec border border-slate-800 px-2 py-0.5 rounded-full font-bold">
                       {room.players.length} Concorrentes
                     </span>
                   </div>
@@ -612,7 +611,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                       <span className="text-md font-mono font-extrabold text-sleek-accent tracking-wider">{room.code}</span>
                       {copied && (
                         <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/90 border border-emerald-500/40 px-2 py-0.5 rounded-md animate-fade-in shadow-md">
-                          Código {room.code} copiado!
+                          Copiado!
                         </span>
                       )}
                     </div>
@@ -623,14 +622,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                       title={`Copiar Código ${room.code}`}
                       className="p-2 hover:bg-sleek-card-hover rounded-xl text-slate-400 hover:text-sleek-accent border border-transparent hover:border-slate-800 cursor-pointer transition-all flex items-center gap-1"
                     >
-                      {copied ? (
-                        <>
-                          <Check className="w-4 h-4 text-emerald-400" />
-                          <span className="text-[10px] text-emerald-400 font-bold hidden sm:inline">Copiado!</span>
-                        </>
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
+                      {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                     </button>
                     <a
                       href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
@@ -662,7 +654,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs md:text-sm font-semibold text-slate-200">{player.username}</span>
-                          {player.username === username && (
+                          {player.username.toLowerCase() === username.toLowerCase() && (
                             <span className="text-[9px] text-slate-500 uppercase border border-slate-800 px-1.5 py-0.2 rounded font-semibold">Tu</span>
                           )}
                         </div>
@@ -707,7 +699,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                   className="w-full sm:w-auto shrink-0 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-emerald-900/20 hover:scale-105 active:scale-95"
                 >
                   <WhatsAppIcon className="w-3.5 h-3.5 fill-current" />
-                  <span>Convidar no Grupo do WhatsApp</span>
+                  <span>Convidar no Grupo</span>
                 </a>
               </div>
             </div>
@@ -721,24 +713,24 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                 <LogOut className="w-4 h-4" /> Sair da Sala
               </button>
 
-              {!isHost ? (
-                <button
-                  onClick={handleToggleReady}
-                  className={`w-full sm:w-1/2 ml-auto px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all ${
-                    selfPlayer?.isReady
-                      ? "bg-emerald-950/40 border border-emerald-800/80 text-emerald-400 hover:bg-emerald-900"
-                      : "bg-sleek-accent hover:bg-amber-500 text-sleek-bg cursor-pointer shadow-lg shadow-sleek-accent/10"
-                  }`}
-                >
-                  {selfPlayer?.isReady ? "Cancelar Pronto" : "Marcar como Pronto"}
-                </button>
-              ) : (
+              <button
+                onClick={handleToggleReady}
+                className={`w-full sm:w-1/2 ml-auto px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all cursor-pointer border ${
+                  selfPlayer?.isReady
+                    ? "bg-slate-900 border-emerald-500/50 text-emerald-400 hover:bg-slate-800"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-500"
+                }`}
+              >
+                {selfPlayer?.isReady ? "Cancelar Pronto" : "Marcar como Pronto"}
+              </button>
+
+              {isHost && (
                 <button
                   onClick={handleStartGame}
-                  disabled={room.players.length < 2 || !allPlayersReady}
-                  className={`w-full sm:w-1/2 ml-auto px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
-                    room.players.length >= 2 && allPlayersReady
-                      ? "bg-blue-600 hover:bg-blue-500 text-white cursor-pointer shadow-lg shadow-blue-900/20"
+                  disabled={!canStartExam}
+                  className={`w-full sm:w-1/2 px-6 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
+                    canStartExam
+                      ? "bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer shadow-lg shadow-emerald-900/30"
                       : "bg-sleek-card-sec text-slate-500 cursor-not-allowed border border-slate-800/40"
                   }`}
                 >
@@ -747,14 +739,14 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
               )}
             </div>
 
-            {isHost && room.players.length < 2 && (
+            {isHost && !hasMinPlayers && (
               <p className="text-[10px] text-amber-500 text-center uppercase tracking-wider font-semibold">
                 Aguarde que pelo menos mais 1 candidato entre para iniciar o exame cooperativo.
               </p>
             )}
-            {isHost && room.players.length >= 2 && !allPlayersReady && (
+            {isHost && hasMinPlayers && !allPlayersReady && (
               <p className="text-[10px] text-amber-500 text-center uppercase tracking-wider font-semibold">
-                Todos os candidatos inscritos devem marcar "Pronto" antes do simulado iniciar.
+                Todos os candidatos inscritos devem marcar "Pronto" antes de iniciar.
               </p>
             )}
           </div>
@@ -774,7 +766,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                     <span className={`font-bold ${
                       msg.username === "Sistema"
                         ? "text-sleek-accent"
-                        : msg.username === username
+                        : msg.username.toLowerCase() === username.toLowerCase()
                         ? "text-blue-400"
                         : "text-slate-300"
                     }`}>
@@ -785,7 +777,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                   <p className={`p-2.5 rounded-xl leading-relaxed ${
                     msg.username === "Sistema"
                       ? "bg-sleek-card-sec/50 border border-slate-800/40 text-sleek-accent"
-                      : msg.username === username
+                      : msg.username.toLowerCase() === username.toLowerCase()
                       ? "bg-blue-950/40 border border-blue-900/20 text-slate-200"
                       : "bg-sleek-card-sec border border-slate-800/60 text-slate-300"
                   }`}>
@@ -825,7 +817,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
   // ----------------------------------------------------
   if (room.status === "playing") {
     const currentQuestion = room.questions[currentQuestionIdx];
-    const selfState = room.players.find(p => p.username === username);
+    const selfState = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
     const hasAlreadyAnsweredQuestion = selfState?.answers[currentQuestionIdx] !== undefined;
 
     return (
@@ -875,7 +867,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                   let optionStyle = "bg-sleek-card-sec border-slate-800 hover:border-slate-700 hover:bg-sleek-card-hover text-slate-300";
 
                   if (hasAlreadyAnsweredQuestion) {
-                    const answeredIdx = selfState?.answers[currentQuestionIdx] !== undefined ? (isSelected || isCorrectOption ? (isCorrectOption ? currentQuestion.resposta_correta : selectedOption) : null) : null;
                     if (isCorrectOption) {
                       optionStyle = "bg-emerald-950/40 border-emerald-500/60 text-emerald-300 font-medium";
                     } else if (isSelected) {
@@ -1004,7 +995,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                 {room.messages.slice(-15).map((msg) => (
                   <div key={msg.id} className="space-y-0.2">
                     <span className={`font-bold ${
-                      msg.username === "Sistema" ? "text-sleek-accent" : msg.username === username ? "text-blue-400" : "text-slate-400"
+                      msg.username === "Sistema" ? "text-sleek-accent" : msg.username.toLowerCase() === username.toLowerCase() ? "text-blue-400" : "text-slate-400"
                     }`}>
                       {msg.username}:
                     </span>
@@ -1043,7 +1034,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
   // VIEW: ROOM FINISHED STATE (PODIUM)
   // ----------------------------------------------------
   if (room.status === "finished") {
-    // Sort players by score to determine rankings
     const sortedPlayers = [...room.players].sort((a, b) => b.score - a.score);
 
     return (
@@ -1063,8 +1053,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
 
           {/* Podium Drawing */}
           <div className="flex items-end justify-center gap-4 max-w-sm mx-auto h-48 pt-6">
-            
-            {/* 2nd Place (Silver) */}
             {sortedPlayers[1] && (
               <div className="flex-1 flex flex-col items-center">
                 <span className="text-xs font-bold text-slate-300 max-w-[80px] truncate">{sortedPlayers[1].username}</span>
@@ -1075,7 +1063,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
               </div>
             )}
 
-            {/* 1st Place (Gold) */}
             {sortedPlayers[0] && (
               <div className="flex-1 flex flex-col items-center">
                 <div className="text-sleek-accent animate-bounce mb-1">
@@ -1089,7 +1076,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
               </div>
             )}
 
-            {/* 3rd Place (Bronze) */}
             {sortedPlayers[2] && (
               <div className="flex-1 flex flex-col items-center">
                 <span className="text-xs font-bold text-amber-600 max-w-[80px] truncate">{sortedPlayers[2].username}</span>
