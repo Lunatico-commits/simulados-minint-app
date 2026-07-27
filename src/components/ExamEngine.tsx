@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { HelpCircle, Send, Sparkles, Check, X, ChevronRight, Loader2, ShieldCheck, HelpCircle as HelpIcon, ArrowRight, BookOpen, GraduationCap, Award, Clock, AlertTriangle, Maximize2, Minimize2, Target, Volume2, VolumeX, LogOut, RefreshCw } from "lucide-react";
 import { Question, ExamAttempt, Level } from "../types";
-import { LEVEL_INFO } from "../data/questions";
+import { LEVEL_INFO, getExamQuestions } from "../data/questions";
 import { motion, AnimatePresence } from "motion/react";
 import confetti from "canvas-confetti";
 import { playCorrectSound, playIncorrectSound, playVictorySound, playClickSound, isSoundEnabled, setSoundEnabled } from "../utils/soundEffects";
@@ -60,7 +60,7 @@ export default function ExamEngine({
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Função para procurar perguntas inéditas no servidor (Obriga a Estar ONLINE)
+  // Função para carregar perguntas com mecanismo de Recuo (Fallback) para perguntas locais
   const loadQuestionsFromAI = async () => {
     setIsLoadingQuestions(true);
     setFetchError(null);
@@ -83,16 +83,32 @@ export default function ExamEngine({
         setTimeLeft(initialSeconds);
         setTimeUp(false);
       } else {
-        setFetchError("Não foi possível carregar o exame. Certifica-te de que estás ligado à internet.");
+        // Fallback: Tenta carregar do banco de questões locais caso a API não traga dados
+        const localQuestions = getExamQuestions(category, level);
+        if (localQuestions && localQuestions.length > 0) {
+          setQuestions(localQuestions);
+          setTimeLeft(localQuestions.length * 60);
+          setTimeUp(false);
+        } else {
+          setFetchError("Não foi possível gerar o exame neste momento. Tenta novamente mais tarde.");
+        }
       }
     } catch (err) {
-      setFetchError("Legação necessária! Para gerar perguntas atualizadas e validadas, liga os Dados Móveis ou Wi-Fi.");
+      // Fallback em caso de erro de rede, 404 ou 500 do servidor
+      const localQuestions = getExamQuestions(category, level);
+      if (localQuestions && localQuestions.length > 0) {
+        setQuestions(localQuestions);
+        setTimeLeft(localQuestions.length * 60);
+        setTimeUp(false);
+      } else {
+        setFetchError("Ligação indisponível. Por favor, verifica os teus dados móveis ou Wi-Fi.");
+      }
     } finally {
       setIsLoadingQuestions(false);
     }
   };
 
-  // Carregar as perguntas do servidor na montagem do componente
+  // Carregar as perguntas do servidor/local na montagem do componente
   useEffect(() => {
     loadQuestionsFromAI();
   }, [category, level]);
@@ -239,7 +255,7 @@ export default function ExamEngine({
     );
   }
 
-  // Ecrã de Erro de Conexão (Caso o candidato esteja sem internet)
+  // Ecrã de Erro de Conexão
   if (fetchError || questions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] p-6 text-center font-sans">
@@ -249,13 +265,13 @@ export default function ExamEngine({
           <div className="flex flex-col sm:flex-row gap-2 pt-2">
             <button
               onClick={onNavigateBack}
-              className="flex-1 px-4 py-2.5 bg-sleek-card-sec border border-slate-800 text-slate-300 text-xs font-bold rounded-xl uppercase"
+              className="flex-1 px-4 py-2.5 bg-sleek-card-sec border border-slate-800 text-slate-300 text-xs font-bold rounded-xl uppercase cursor-pointer"
             >
               Voltar
             </button>
             <button
               onClick={loadQuestionsFromAI}
-              className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl uppercase flex items-center justify-center gap-1.5"
+              className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl uppercase flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" /> Tentar Novamente
             </button>
@@ -640,7 +656,7 @@ export default function ExamEngine({
                       </div>
                       <button
                         onClick={() => setTutorOpen(false)}
-                        className="text-xs text-slate-500 hover:text-slate-300"
+                        className="text-xs text-slate-500 hover:text-slate-300 cursor-pointer"
                       >
                         Recolher
                       </button>
