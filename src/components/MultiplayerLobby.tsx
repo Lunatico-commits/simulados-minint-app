@@ -28,6 +28,8 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
   const eventSourceRef = useRef<EventSource | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const cleanCurrentUsername = username ? username.trim().toLowerCase() : "";
+
   // Auto-scroll chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -45,9 +47,9 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
   // Celebrate victory or 100% score when multiplayer ends
   useEffect(() => {
     if (room?.status === "finished") {
-      const myPlayer = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
+      const myPlayer = room.players.find(p => p.username.trim().toLowerCase() === cleanCurrentUsername);
       const isWinner = room.players.length > 0 && 
-        [...room.players].sort((a, b) => b.score - a.score)[0]?.username.toLowerCase() === username.toLowerCase();
+        [...room.players].sort((a, b) => b.score - a.score)[0]?.username.trim().toLowerCase() === cleanCurrentUsername;
       const isPerfectScore = myPlayer && room.questions.length > 0 && myPlayer.score === room.questions.length;
 
       if (isWinner || isPerfectScore) {
@@ -59,7 +61,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
         });
       }
     }
-  }, [room?.status, username]);
+  }, [room?.status, cleanCurrentUsername]);
 
   // Initialize SSE event stream for the joined room
   const connectToRoomStream = (code: string) => {
@@ -224,7 +226,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
       if (stored) {
         try {
           const parsed: Room = JSON.parse(stored);
-          if (!parsed.players.some(p => p.username.toLowerCase() === cleanUser.toLowerCase())) {
+          if (!parsed.players.some(p => p.username.trim().toLowerCase() === cleanUser.toLowerCase())) {
             parsed.players.push({
               username: cleanUser,
               isReady: false,
@@ -282,7 +284,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     setRoom(prev => {
       if (!prev) return null;
       const updatedPlayers = prev.players.map(p => 
-        p.username.toLowerCase() === username.toLowerCase() 
+        p.username.trim().toLowerCase() === cleanCurrentUsername 
           ? { ...p, isReady: !p.isReady } 
           : p
       );
@@ -292,7 +294,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     });
 
     try {
-      const self = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
+      const self = room.players.find(p => p.username.trim().toLowerCase() === cleanCurrentUsername);
       await fetch("/api/multiplayer/ready", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -343,7 +345,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
 
     setRoom(prev => {
       if (!prev) return null;
-      const updatedPlayers = prev.players.map(p => p.username.toLowerCase() === username.toLowerCase() ? { ...p, score: isCorrect ? p.score + 1 : p.score } : p);
+      const updatedPlayers = prev.players.map(p => p.username.trim().toLowerCase() === cleanCurrentUsername ? { ...p, score: isCorrect ? p.score + 1 : p.score } : p);
       const isFinished = currentQuestionIdx >= prev.questions.length - 1;
       const updated = {
         ...prev,
@@ -573,16 +575,20 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
     );
   }
 
-  const selfPlayer = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
-  const isHost = selfPlayer?.isHost || false;
+  // Identificação robusta do jogador e do anfitrião
+  const selfPlayer = room.players.find(
+    p => p.username.trim().toLowerCase() === cleanCurrentUsername
+  );
+  
+  // O anfitrião é identificado pela flag `isHost` ou se for o primeiro jogador da lista
+  const isHost = selfPlayer ? selfPlayer.isHost : (room.players.length > 0 && room.players[0].username.trim().toLowerCase() === cleanCurrentUsername);
 
   // ----------------------------------------------------
   // VIEW: ROOM LOBBY STATE
   // ----------------------------------------------------
   if (room.status === "lobby") {
     const hasMinPlayers = room.players.length >= 2;
-    const allPlayersReady = room.players.length > 0 && room.players.every(p => p.isReady);
-    const canStartExam = isHost && hasMinPlayers && allPlayersReady;
+    const canStartExam = isHost && hasMinPlayers;
 
     return (
       <div className="max-w-6xl mx-auto px-4 py-6 md:py-8 font-sans text-slate-200">
@@ -654,7 +660,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs md:text-sm font-semibold text-slate-200">{player.username}</span>
-                          {player.username.toLowerCase() === username.toLowerCase() && (
+                          {player.username.trim().toLowerCase() === cleanCurrentUsername && (
                             <span className="text-[9px] text-slate-500 uppercase border border-slate-800 px-1.5 py-0.2 rounded font-semibold">Tu</span>
                           )}
                         </div>
@@ -744,11 +750,6 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                 Aguarde que pelo menos mais 1 candidato entre para iniciar o exame cooperativo.
               </p>
             )}
-            {isHost && hasMinPlayers && !allPlayersReady && (
-              <p className="text-[10px] text-amber-500 text-center uppercase tracking-wider font-semibold">
-                Todos os candidatos inscritos devem marcar "Pronto" antes de iniciar.
-              </p>
-            )}
           </div>
 
           {/* Right panel: Chat integration */}
@@ -766,7 +767,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                     <span className={`font-bold ${
                       msg.username === "Sistema"
                         ? "text-sleek-accent"
-                        : msg.username.toLowerCase() === username.toLowerCase()
+                        : msg.username.trim().toLowerCase() === cleanCurrentUsername
                         ? "text-blue-400"
                         : "text-slate-300"
                     }`}>
@@ -777,7 +778,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                   <p className={`p-2.5 rounded-xl leading-relaxed ${
                     msg.username === "Sistema"
                       ? "bg-sleek-card-sec/50 border border-slate-800/40 text-sleek-accent"
-                      : msg.username.toLowerCase() === username.toLowerCase()
+                      : msg.username.trim().toLowerCase() === cleanCurrentUsername
                       ? "bg-blue-950/40 border border-blue-900/20 text-slate-200"
                       : "bg-sleek-card-sec border border-slate-800/60 text-slate-300"
                   }`}>
@@ -817,7 +818,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
   // ----------------------------------------------------
   if (room.status === "playing") {
     const currentQuestion = room.questions[currentQuestionIdx];
-    const selfState = room.players.find(p => p.username.toLowerCase() === username.toLowerCase());
+    const selfState = room.players.find(p => p.username.trim().toLowerCase() === cleanCurrentUsername);
     const hasAlreadyAnsweredQuestion = selfState?.answers[currentQuestionIdx] !== undefined;
 
     return (
@@ -995,7 +996,7 @@ export default function MultiplayerLobby({ username, initialRoomCode, onNavigate
                 {room.messages.slice(-15).map((msg) => (
                   <div key={msg.id} className="space-y-0.2">
                     <span className={`font-bold ${
-                      msg.username === "Sistema" ? "text-sleek-accent" : msg.username.toLowerCase() === username.toLowerCase() ? "text-blue-400" : "text-slate-400"
+                      msg.username === "Sistema" ? "text-sleek-accent" : msg.username.trim().toLowerCase() === cleanCurrentUsername ? "text-blue-400" : "text-slate-400"
                     }`}>
                       {msg.username}:
                     </span>
